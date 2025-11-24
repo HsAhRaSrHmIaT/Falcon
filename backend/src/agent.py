@@ -1,7 +1,11 @@
 import logging
+import json
+# import os
+from datetime import datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
-from livekit.agents import (
+from livekit.agents import ( #type: ignore
     Agent,
     AgentSession,
     JobContext,
@@ -12,42 +16,259 @@ from livekit.agents import (
     cli,
     metrics,
     tokenize,
-    # function_tool,
-    # RunContext
+    function_tool,
+    RunContext
 )
-from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
-from livekit.plugins.turn_detector.multilingual import MultilingualModel
+from livekit.plugins import murf, silero, google, deepgram, noise_cancellation #type: ignore
+from livekit.plugins.turn_detector.multilingual import MultilingualModel #type: ignore
 
 logger = logging.getLogger("agent")
 
-load_dotenv(".env.local")
+load_dotenv(".env")
 
 
 class Assistant(Agent):
     def __init__(self) -> None:
-        super().__init__(
-            instructions="""You are a helpful voice AI assistant. The user is interacting with you via voice, even if you perceive the conversation as text.
-            You eagerly assist users with their questions by providing information from your extensive knowledge.
-            Your responses are concise, to the point, and without any complex formatting or punctuation including emojis, asterisks, or other symbols.
-            You are curious, friendly, and have a sense of humor.""",
-        )
+        # Build dynamic instructions that include past context
+        base_instructions = """You are a supportive and grounded daily wellness companion. Your role is to conduct short voice check-ins about the user's mood, energy, and daily goals, offering simple, realistic encouragement without any medical advice or diagnosis.
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+            Each day, ask about:
+            - How they're feeling (mood and energy level)
+            - Any current stresses or positive notes
+            - 1–3 practical objectives or intentions for the day (e.g., work tasks, self-care like rest or exercise)
+
+            Offer small, actionable suggestions like breaking goals into steps or taking short breaks. Keep conversations natural, concise, and empathetic.
+
+            At the end of each check-in, recap the key points and confirm with the user. Use past check-in data to inform conversations.
+
+            Always be realistic, non-judgmental, and focused on support."""
+        
+        # Add past context if available
+        full_instructions = base_instructions
+        if hasattr(self, 'past_context') and self.past_context:
+            full_instructions += f"\n\nContext from previous check-ins: {self.past_context}"
+        
+        super().__init__(instructions=full_instructions)
+        
+        # Initialize wellness state
+        self.wellness_state = {
+            "date": None,
+            "mood": None,
+            "energy": None,
+            "stressors": [],
+            "objectives": [],
+            "summary": None
+        }
+        
+        # Create wellness logs directory if it doesn't exist - use absolute path
+        self.wellness_dir = Path(__file__).parent.parent / "wellness_logs"
+        self.wellness_dir.mkdir(exist_ok=True)
+
+        # Load past check-ins
+        self.wellness_log_file = self.wellness_dir / "wellness_log.json"
+        self.past_checkins = {}
+        self.load_past_checkins()
+        
+        # Prepare context from past check-ins for conversation
+        self.past_context = self.get_past_context()
+
+    @function_tool
+    async def update_checkin(self, context: RunContext, mood: str = None, energy: str = None, 
+                            stressors: str = None, objectives: str = None):
+        """Update the user's daily wellness check-in with new information.
+        
+        Use this tool whenever the user provides information about their mood, energy, stressors, or objectives.
+        You can update multiple fields at once or just one field at a time.
+        
+        Args:
+            mood: User's self-reported mood (e.g., happy, tired, stressed)
+            energy: Energy level (e.g., high, medium, low)
+            stressors: Any current stressors as a comma-separated string (e.g., "work deadline, family issues")
+            objectives: Daily objectives as a comma-separated string (e.g., "finish report, take a walk, rest")
+        """
+        
+        logger.info(f"Updating check-in: mood={mood}, energy={energy}, stressors={stressors}, objectives={objectives}")
+        
+        # Update wellness state
+        if mood:
+            self.wellness_state["mood"] = mood.strip()
+        if energy:
+            self.wellness_state["energy"] = energy.strip()
+        if stressors:
+            # Parse stressors and add to list
+            new_stressors = [stressor.strip() for stressor in stressors.split(",") if stressor.strip()]
+            self.wellness_state["stressors"].extend(new_stressors)
+            # Remove duplicates while preserving order
+            self.wellness_state["stressors"] = list(dict.fromkeys(self.wellness_state["stressors"]))
+        if objectives:
+            # Parse objectives and add to list
+            new_objectives = [obj.strip() for obj in objectives.split(",") if obj.strip()]
+            self.wellness_state["objectives"].extend(new_objectives)
+            # Remove duplicates while preserving order
+            self.wellness_state["objectives"] = list(dict.fromkeys(self.wellness_state["objectives"]))
+            
+        # Check what's still missing
+        missing_fields = []
+        if not self.wellness_state["mood"]:
+            missing_fields.append("mood")
+        if not self.wellness_state["energy"]:
+            missing_fields.append("energy")
+        if not self.wellness_state["objectives"]:
+            missing_fields.append("at least one objective")
+            
+        current_checkin = f"Current check-in: Mood: {self.wellness_state['mood'] or 'TBD'}, Energy: {self.wellness_state['energy'] or 'TBD'}"
+        if self.wellness_state['stressors']:
+            current_checkin += f", Stressors: {', '.join(self.wellness_state['stressors'])}"
+        if self.wellness_state['objectives']:
+            current_checkin += f", Objectives: {', '.join(self.wellness_state['objectives'])}"
+            
+        if missing_fields:
+            return f"Got it! {current_checkin}. Still need: {', '.join(missing_fields)}."
+        else:
+            return f"Great! {current_checkin}. Check-in is complete and ready to finalize!"
+    
+    @function_tool
+    async def finalize_checkin(self, context: RunContext):
+        """Finalize and save the user's complete wellness check-in to a JSON file.
+        
+        Only use this tool when all required fields are filled and user confirms the check-in.
+        """
+        
+        # Check if check-in is complete
+        required_fields = ["mood", "energy"]
+        missing_fields = [field for field in required_fields if not self.wellness_state[field]]
+        if not self.wellness_state["objectives"]:
+            missing_fields.append("at least one objective")
+        
+        if missing_fields:
+            return f"Cannot finalize check-in. Missing: {', '.join(missing_fields)}. Please collect this information first."
+        
+        # Create check-in entry with timestamp
+        today = datetime.now().date().isoformat()
+        final_checkin = {
+            "date": today,
+            "timestamp": datetime.now().isoformat(),
+            "mood": self.wellness_state["mood"],
+            "energy": self.wellness_state["energy"],
+            "stressors": self.wellness_state["stressors"],
+            "objectives": self.wellness_state["objectives"],
+            "summary": f"Mood: {self.wellness_state['mood']}, Energy: {self.wellness_state['energy']}, Objectives: {', '.join(self.wellness_state['objectives'])}"
+        }
+        
+        # Save to past check-ins and write to file
+        self.past_checkins[today] = final_checkin
+        try:
+            # Ensure the directory exists
+            self.wellness_log_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write with proper encoding
+            with open(self.wellness_log_file, 'w', encoding='utf-8') as f:
+                json.dump(self.past_checkins, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Check-in saved to {self.wellness_log_file} (total entries: {len(self.past_checkins)})")
+            
+            # Reset wellness state for next check-in
+            self.wellness_state = {
+                "date": None,
+                "mood": None,
+                "energy": None,
+                "stressors": [],
+                "objectives": [],
+                "summary": None
+            }
+            
+            return f"Check-in finalized! {final_checkin['summary']}. See you tomorrow!"
+            
+        except Exception as e:
+            logger.error(f"Failed to save check-in: {e}")
+            return f"Check-in completed but there was an issue saving it. Please try again."
+    
+    def load_past_checkins(self):
+        """Load past check-ins from the JSON file with error handling."""
+        try:
+            if self.wellness_log_file.exists():
+                with open(self.wellness_log_file, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                    if content:
+                        self.past_checkins = json.loads(content)
+                        logger.info(f"Loaded {len(self.past_checkins)} past check-ins from {self.wellness_log_file}")
+                    else:
+                        logger.info("Wellness log file is empty, starting fresh")
+                        self.past_checkins = {}
+            else:
+                logger.info("No wellness log file found, starting fresh")
+                self.past_checkins = {}
+        except Exception as e:
+            logger.error(f"Error loading past check-ins: {e}")
+            self.past_checkins = {}
+    
+    def get_past_context(self):
+        """Generate conversation context from past check-ins."""
+        if not self.past_checkins:
+            return "This is our first check-in together! Let's start with how you're feeling today."
+        
+        # Get the most recent check-in
+        sorted_dates = sorted(self.past_checkins.keys(), reverse=True)
+        latest_date = sorted_dates[0]
+        latest_checkin = self.past_checkins[latest_date]
+        
+        context_parts = []
+        context_parts.append(f"Last time we talked on {latest_date}, you mentioned:")
+        context_parts.append(f"- Feeling {latest_checkin['mood']} with {latest_checkin['energy']} energy")
+        
+        if latest_checkin.get('stressors'):
+            context_parts.append(f"- Dealing with: {', '.join(latest_checkin['stressors'])}")
+        
+        if latest_checkin.get('objectives'):
+            context_parts.append(f"- Working on: {', '.join(latest_checkin['objectives'])}")
+        
+        context_parts.append("How are things going today compared to then?")
+        
+        return " ".join(context_parts)
+
+    @function_tool
+    async def get_past_checkins_info(self, context: RunContext, days_back: int = 7):
+        """Get information from past check-ins to help with conversation context.
+        
+        Args:
+            days_back: Number of days to look back (default 7)
+        """
+        if not self.past_checkins:
+            return "No past check-ins found. This seems to be our first conversation!"
+        
+        # Get recent check-ins
+        today = datetime.now().date()
+        recent_checkins = []
+        
+        for date_str, checkin in self.past_checkins.items():
+            try:
+                checkin_date = datetime.fromisoformat(date_str).date()
+                days_diff = (today - checkin_date).days
+                if days_diff <= days_back:
+                    recent_checkins.append((days_diff, checkin))
+            except ValueError:
+                continue
+        
+        if not recent_checkins:
+            return f"No check-ins found in the last {days_back} days."
+        
+        # Sort by recency (most recent first)
+        recent_checkins.sort(key=lambda x: x[0])
+        
+        summary_parts = [f"Recent check-ins (last {days_back} days):"]
+        for days_ago, checkin in recent_checkins:
+            if days_ago == 0:
+                day_desc = "today"
+            elif days_ago == 1:
+                day_desc = "yesterday"
+            else:
+                day_desc = f"{days_ago} days ago"
+            
+            summary_parts.append(f"- {day_desc.title()}: {checkin['mood']} mood, {checkin['energy']} energy")
+            if checkin.get('objectives'):
+                summary_parts.append(f"  Goals: {', '.join(checkin['objectives'])}")
+        
+        return "\n".join(summary_parts)
 
 
 def prewarm(proc: JobProcess):
