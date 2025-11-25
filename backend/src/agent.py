@@ -27,248 +27,253 @@ logger = logging.getLogger("agent")
 load_dotenv(".env")
 
 
-class Assistant(Agent):
+class TutorAssistant(Agent):
     def __init__(self) -> None:
-        # Build dynamic instructions that include past context
-        base_instructions = """You are a supportive and grounded daily wellness companion. Your role is to conduct short voice check-ins about the user's mood, energy, and daily goals, offering simple, realistic encouragement without any medical advice or diagnosis.
+        # Base instructions for the tutoring system
+        base_instructions = """You are an Active Recall Coach that helps users learn programming concepts through three distinct learning modes:
 
-            Each day, ask about:
-            - How they're feeling (mood and energy level)
-            - Any current stresses or positive notes
-            - 1–3 practical objectives or intentions for the day (e.g., work tasks, self-care like rest or exercise)
+LEARN mode: You explain concepts clearly and simply. Your voice is Matthew (warm, instructional).
+QUIZ mode: You ask questions to test understanding. Your voice is Alicia (engaging, questioning).
+TEACH_BACK mode: You ask the user to explain concepts back to you and give feedback. Your voice is Ken (encouraging, evaluative).
 
-            Offer small, actionable suggestions like breaking goals into steps or taking short breaks. Keep conversations natural, concise, and empathetic.
+Always start by greeting the user and asking which learning mode they'd like to use. Users can switch modes at any time by asking.
 
-            At the end of each check-in, recap the key points and confirm with the user. Use past check-in data to inform conversations.
+Key behaviors:
+- Keep explanations clear and beginner-friendly
+- Ask follow-up questions to deepen understanding  
+- Give constructive feedback when users teach back
+- Use the available concepts from the content file
+- Be encouraging and supportive throughout"""
+        
+        super().__init__(instructions=base_instructions)
+        
+        # Initialize learning state
+        self.current_mode = None  # 'learn', 'quiz', 'teach_back'
+        self.current_concept = None
+        self.concepts = []
+        
+        # Load learning content
+        self.content_file = Path(__file__).parent.parent / "shared-data" / "day4_tutor_content.json"
+        self.load_content()
 
-            Always be realistic, non-judgmental, and focused on support."""
-        
-        # Add past context if available
-        full_instructions = base_instructions
-        if hasattr(self, 'past_context') and self.past_context:
-            full_instructions += f"\n\nContext from previous check-ins: {self.past_context}"
-        
-        super().__init__(instructions=full_instructions)
-        
-        # Initialize wellness state
-        self.wellness_state = {
-            "date": None,
-            "mood": None,
-            "energy": None,
-            "stressors": [],
-            "objectives": [],
-            "summary": None
-        }
-        
-        # Create wellness logs directory if it doesn't exist - use absolute path
-        self.wellness_dir = Path(__file__).parent.parent / "wellness_logs"
-        self.wellness_dir.mkdir(exist_ok=True)
-
-        # Load past check-ins
-        self.wellness_log_file = self.wellness_dir / "wellness_log.json"
-        self.past_checkins = {}
-        self.load_past_checkins()
-        
-        # Prepare context from past check-ins for conversation
-        self.past_context = self.get_past_context()
+    def load_content(self):
+        """Load programming concepts from the JSON file."""
+        try:
+            if self.content_file.exists():
+                with open(self.content_file, 'r', encoding='utf-8') as f:
+                    self.concepts = json.load(f)
+                    logger.info(f"Loaded {len(self.concepts)} programming concepts")
+            else:
+                logger.error(f"Content file not found: {self.content_file}")
+                self.concepts = []
+        except Exception as e:
+            logger.error(f"Error loading content: {e}")
+            self.concepts = []
 
     @function_tool
-    async def update_checkin(self, context: RunContext, mood: str = None, energy: str = None, 
-                            stressors: str = None, objectives: str = None):
-        """Update the user's daily wellness check-in with new information.
-        
-        Use this tool whenever the user provides information about their mood, energy, stressors, or objectives.
-        You can update multiple fields at once or just one field at a time.
+    async def set_learning_mode(self, context: RunContext, mode: str, concept_id: str = None):
+        """Set the learning mode and optionally select a concept.
         
         Args:
-            mood: User's self-reported mood (e.g., happy, tired, stressed)
-            energy: Energy level (e.g., high, medium, low)
-            stressors: Any current stressors as a comma-separated string (e.g., "work deadline, family issues")
-            objectives: Daily objectives as a comma-separated string (e.g., "finish report, take a walk, rest")
+            mode: Learning mode - 'learn', 'quiz', or 'teach_back'
+            concept_id: Optional concept ID to focus on (variables, loops, functions, conditionals)
         """
+        valid_modes = ['learn', 'quiz', 'teach_back']
+        if mode not in valid_modes:
+            return f"Invalid mode. Please choose from: {', '.join(valid_modes)}"
         
-        logger.info(f"Updating check-in: mood={mood}, energy={energy}, stressors={stressors}, objectives={objectives}")
+        self.current_mode = mode
         
-        # Update wellness state
-        if mood:
-            self.wellness_state["mood"] = mood.strip()
-        if energy:
-            self.wellness_state["energy"] = energy.strip()
-        if stressors:
-            # Parse stressors and add to list
-            new_stressors = [stressor.strip() for stressor in stressors.split(",") if stressor.strip()]
-            self.wellness_state["stressors"].extend(new_stressors)
-            # Remove duplicates while preserving order
-            self.wellness_state["stressors"] = list(dict.fromkeys(self.wellness_state["stressors"]))
-        if objectives:
-            # Parse objectives and add to list
-            new_objectives = [obj.strip() for obj in objectives.split(",") if obj.strip()]
-            self.wellness_state["objectives"].extend(new_objectives)
-            # Remove duplicates while preserving order
-            self.wellness_state["objectives"] = list(dict.fromkeys(self.wellness_state["objectives"]))
-            
-        # Check what's still missing
-        missing_fields = []
-        if not self.wellness_state["mood"]:
-            missing_fields.append("mood")
-        if not self.wellness_state["energy"]:
-            missing_fields.append("energy")
-        if not self.wellness_state["objectives"]:
-            missing_fields.append("at least one objective")
-            
-        current_checkin = f"Current check-in: Mood: {self.wellness_state['mood'] or 'TBD'}, Energy: {self.wellness_state['energy'] or 'TBD'}"
-        if self.wellness_state['stressors']:
-            current_checkin += f", Stressors: {', '.join(self.wellness_state['stressors'])}"
-        if self.wellness_state['objectives']:
-            current_checkin += f", Objectives: {', '.join(self.wellness_state['objectives'])}"
-            
-        if missing_fields:
-            return f"Got it! {current_checkin}. Still need: {', '.join(missing_fields)}."
+        # If concept_id provided, validate and set it
+        if concept_id:
+            concept = next((c for c in self.concepts if c['id'] == concept_id), None)
+            if concept:
+                self.current_concept = concept
+            else:
+                return f"Concept '{concept_id}' not found. Available concepts: {', '.join(c['id'] for c in self.concepts)}"
+        
+        # Mode-specific responses with voice confirmation
+        if mode == 'learn':
+            if self.current_concept:
+                return f"Great! I'm now in LEARN mode and you'll hear Matthew's warm, instructional voice. Let me explain {self.current_concept['title']} to you."
+            else:
+                concept_list = ', '.join(c['title'] for c in self.concepts)
+                return f"I'm now in LEARN mode and you'll hear Matthew's warm, instructional voice. Which concept would you like to learn about? Available: {concept_list}"
+        
+        elif mode == 'quiz':
+            if self.current_concept:
+                return f"Excellent! I'm now in QUIZ mode and you'll hear Alicia's engaging, questioning voice. Let me ask you about {self.current_concept['title']}."
+            else:
+                concept_list = ', '.join(c['title'] for c in self.concepts)
+                return f"I'm now in QUIZ mode and you'll hear Alicia's engaging, questioning voice. Which concept should I quiz you on? Available: {concept_list}"
+        
+        elif mode == 'teach_back':
+            if self.current_concept:
+                return f"Perfect! I'm now in TEACH_BACK mode and you'll hear Ken's encouraging, evaluative voice. Please explain {self.current_concept['title']} back to me."
+            else:
+                concept_list = ', '.join(c['title'] for c in self.concepts)
+                return f"I'm now in TEACH_BACK mode and you'll hear Ken's encouraging, evaluative voice. Which concept would you like to teach me? Available: {concept_list}"
+
+    @function_tool
+    async def select_concept(self, context: RunContext, concept_id: str):
+        """Select a specific concept to work with.
+        
+        Args:
+            concept_id: The concept ID (variables, loops, functions, conditionals)
+        """
+        concept = next((c for c in self.concepts if c['id'] == concept_id), None)
+        if not concept:
+            available = ', '.join(c['id'] for c in self.concepts)
+            return f"Concept '{concept_id}' not found. Available concepts: {available}"
+        
+        self.current_concept = concept
+        
+        if not self.current_mode:
+            return f"Great! I've selected {concept['title']}. Which learning mode would you like to use? (learn, quiz, or teach_back)"
+        
+        # Provide mode-specific response with the new concept
+        if self.current_mode == 'learn':
+            return f"Perfect! Let me explain {concept['title']} to you: {concept['summary']}"
+        elif self.current_mode == 'quiz':
+            return f"Great! Here's a question about {concept['title']}: {concept['sample_question']}"
+        elif self.current_mode == 'teach_back':
+            return f"Excellent! Now please explain {concept['title']} back to me in your own words."
+
+    @function_tool
+    async def explain_concept(self, context: RunContext, concept_id: str = None):
+        """Explain a programming concept in LEARN mode.
+        
+        Args:
+            concept_id: Optional concept ID to explain, uses current concept if not provided
+        """
+        if concept_id:
+            concept = next((c for c in self.concepts if c['id'] == concept_id), None)
+            if not concept:
+                return f"Concept '{concept_id}' not found."
         else:
-            return f"Great! {current_checkin}. Check-in is complete and ready to finalize!"
-    
-    @function_tool
-    async def finalize_checkin(self, context: RunContext):
-        """Finalize and save the user's complete wellness check-in to a JSON file.
+            concept = self.current_concept
         
-        Only use this tool when all required fields are filled and user confirms the check-in.
-        """
+        if not concept:
+            available = ', '.join(c['title'] for c in self.concepts)
+            return f"Please select a concept first. Available: {available}"
         
-        # Check if check-in is complete
-        required_fields = ["mood", "energy"]
-        missing_fields = [field for field in required_fields if not self.wellness_state[field]]
-        if not self.wellness_state["objectives"]:
-            missing_fields.append("at least one objective")
+        # Set to learn mode and current concept
+        self.current_mode = 'learn'
+        self.current_concept = concept
         
-        if missing_fields:
-            return f"Cannot finalize check-in. Missing: {', '.join(missing_fields)}. Please collect this information first."
+        explanation = f"Let me explain {concept['title']}:\n\n{concept['summary']}\n\nWould you like me to quiz you on this concept, or would you prefer to teach it back to me to test your understanding?"
         
-        # Create check-in entry with timestamp
-        today = datetime.now().date().isoformat()
-        final_checkin = {
-            "date": today,
-            "timestamp": datetime.now().isoformat(),
-            "mood": self.wellness_state["mood"],
-            "energy": self.wellness_state["energy"],
-            "stressors": self.wellness_state["stressors"],
-            "objectives": self.wellness_state["objectives"],
-            "summary": f"Mood: {self.wellness_state['mood']}, Energy: {self.wellness_state['energy']}, Objectives: {', '.join(self.wellness_state['objectives'])}"
-        }
-        
-        # Save to past check-ins and write to file
-        self.past_checkins[today] = final_checkin
-        try:
-            # Ensure the directory exists
-            self.wellness_log_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Write with proper encoding
-            with open(self.wellness_log_file, 'w', encoding='utf-8') as f:
-                json.dump(self.past_checkins, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"Check-in saved to {self.wellness_log_file} (total entries: {len(self.past_checkins)})")
-            
-            # Reset wellness state for next check-in
-            self.wellness_state = {
-                "date": None,
-                "mood": None,
-                "energy": None,
-                "stressors": [],
-                "objectives": [],
-                "summary": None
-            }
-            
-            return f"Check-in finalized! {final_checkin['summary']}. See you tomorrow!"
-            
-        except Exception as e:
-            logger.error(f"Failed to save check-in: {e}")
-            return f"Check-in completed but there was an issue saving it. Please try again."
-    
-    def load_past_checkins(self):
-        """Load past check-ins from the JSON file with error handling."""
-        try:
-            if self.wellness_log_file.exists():
-                with open(self.wellness_log_file, 'r', encoding='utf-8') as f:
-                    content = f.read().strip()
-                    if content:
-                        self.past_checkins = json.loads(content)
-                        logger.info(f"Loaded {len(self.past_checkins)} past check-ins from {self.wellness_log_file}")
-                    else:
-                        logger.info("Wellness log file is empty, starting fresh")
-                        self.past_checkins = {}
-            else:
-                logger.info("No wellness log file found, starting fresh")
-                self.past_checkins = {}
-        except Exception as e:
-            logger.error(f"Error loading past check-ins: {e}")
-            self.past_checkins = {}
-    
-    def get_past_context(self):
-        """Generate conversation context from past check-ins."""
-        if not self.past_checkins:
-            return "This is our first check-in together! Let's start with how you're feeling today."
-        
-        # Get the most recent check-in
-        sorted_dates = sorted(self.past_checkins.keys(), reverse=True)
-        latest_date = sorted_dates[0]
-        latest_checkin = self.past_checkins[latest_date]
-        
-        context_parts = []
-        context_parts.append(f"Last time we talked on {latest_date}, you mentioned:")
-        context_parts.append(f"- Feeling {latest_checkin['mood']} with {latest_checkin['energy']} energy")
-        
-        if latest_checkin.get('stressors'):
-            context_parts.append(f"- Dealing with: {', '.join(latest_checkin['stressors'])}")
-        
-        if latest_checkin.get('objectives'):
-            context_parts.append(f"- Working on: {', '.join(latest_checkin['objectives'])}")
-        
-        context_parts.append("How are things going today compared to then?")
-        
-        return " ".join(context_parts)
+        return explanation
 
     @function_tool
-    async def get_past_checkins_info(self, context: RunContext, days_back: int = 7):
-        """Get information from past check-ins to help with conversation context.
+    async def ask_quiz_question(self, context: RunContext, concept_id: str = None):
+        """Ask a quiz question in QUIZ mode.
         
         Args:
-            days_back: Number of days to look back (default 7)
+            concept_id: Optional concept ID to quiz on, uses current concept if not provided
         """
-        if not self.past_checkins:
-            return "No past check-ins found. This seems to be our first conversation!"
+        if concept_id:
+            concept = next((c for c in self.concepts if c['id'] == concept_id), None)
+            if not concept:
+                return f"Concept '{concept_id}' not found."
+        else:
+            concept = self.current_concept
         
-        # Get recent check-ins
-        today = datetime.now().date()
-        recent_checkins = []
+        if not concept:
+            available = ', '.join(c['title'] for c in self.concepts)
+            return f"Please select a concept first. Available: {available}"
         
-        for date_str, checkin in self.past_checkins.items():
-            try:
-                checkin_date = datetime.fromisoformat(date_str).date()
-                days_diff = (today - checkin_date).days
-                if days_diff <= days_back:
-                    recent_checkins.append((days_diff, checkin))
-            except ValueError:
-                continue
+        # Set to quiz mode and current concept
+        self.current_mode = 'quiz'
+        self.current_concept = concept
         
-        if not recent_checkins:
-            return f"No check-ins found in the last {days_back} days."
+        return f"Here's a question about {concept['title']}: {concept['sample_question']}"
+
+    @function_tool
+    async def evaluate_teaching(self, context: RunContext, user_explanation: str):
+        """Evaluate the user's explanation in TEACH_BACK mode and provide feedback.
         
-        # Sort by recency (most recent first)
-        recent_checkins.sort(key=lambda x: x[0])
+        Args:
+            user_explanation: The user's explanation of the concept
+        """
+        if not self.current_concept:
+            return "Please select a concept first before teaching back."
         
-        summary_parts = [f"Recent check-ins (last {days_back} days):"]
-        for days_ago, checkin in recent_checkins:
-            if days_ago == 0:
-                day_desc = "today"
-            elif days_ago == 1:
-                day_desc = "yesterday"
+        # Set to teach_back mode
+        self.current_mode = 'teach_back'
+        
+        # Simple evaluation based on key terms and concepts
+        concept = self.current_concept
+        concept_id = concept['id']
+        
+        # Key terms to look for in explanations
+        key_terms = {
+            'variables': ['store', 'value', 'container', 'label', 'reuse'],
+            'loops': ['repeat', 'iterate', 'for', 'while', 'condition'],
+            'functions': ['reusable', 'parameter', 'input', 'return', 'block'],
+            'conditionals': ['if', 'condition', 'decision', 'true', 'false', 'else']
+        }
+        
+        user_lower = user_explanation.lower()
+        concept_terms = key_terms.get(concept_id, [])
+        found_terms = [term for term in concept_terms if term in user_lower]
+        
+        # Provide feedback based on coverage
+        if len(found_terms) >= len(concept_terms) * 0.6:  # 60% or more key terms
+            feedback = f"Excellent explanation! You covered the key aspects of {concept['title']}. "
+            if len(found_terms) == len(concept_terms):
+                feedback += "You mentioned all the important concepts!"
             else:
-                day_desc = f"{days_ago} days ago"
-            
-            summary_parts.append(f"- {day_desc.title()}: {checkin['mood']} mood, {checkin['energy']} energy")
-            if checkin.get('objectives'):
-                summary_parts.append(f"  Goals: {', '.join(checkin['objectives'])}")
+                feedback += f"You got most of the important points. Great understanding!"
+        elif len(found_terms) >= len(concept_terms) * 0.3:  # 30-60% key terms
+            feedback = f"Good start! You understand some key aspects of {concept['title']}. "
+            missing = len(concept_terms) - len(found_terms)
+            feedback += f"Consider also mentioning aspects like how {concept_id} help with organization and reusability in programming."
+        else:
+            feedback = f"I can see you're working on understanding {concept['title']}. "
+            feedback += f"Let me help clarify: {concept['summary'][:100]}... Would you like to try explaining it again?"
         
-        return "\n".join(summary_parts)
+        feedback += f"\n\nWould you like to switch to a different mode or concept, or continue practicing?"
+        
+        return feedback
+
+    @function_tool
+    async def get_available_concepts(self, context: RunContext):
+        """Get a list of all available programming concepts."""
+        if not self.concepts:
+            return "No concepts are currently loaded."
+        
+        concept_list = []
+        for concept in self.concepts:
+            concept_list.append(f"- {concept['title']} (ID: {concept['id']}): {concept['summary'][:50]}...")
+        
+        return "Available programming concepts:\n" + "\n".join(concept_list)
+
+    @function_tool
+    async def get_current_status(self, context: RunContext):
+        """Get the current learning mode and concept status."""
+        status = []
+        
+        if self.current_mode:
+            voice_info = {
+                'learn': 'Matthew (warm, instructional)',
+                'quiz': 'Alicia (engaging, questioning)', 
+                'teach_back': 'Ken (encouraging, evaluative)'
+            }
+            current_voice = voice_info.get(self.current_mode, 'Unknown')
+            status.append(f"Current mode: {self.current_mode.upper()} with {current_voice} voice")
+        else:
+            status.append("No mode selected yet")
+        
+        if self.current_concept:
+            status.append(f"Current concept: {self.current_concept['title']}")
+        else:
+            status.append("No concept selected")
+        
+        status.append("\nAvailable modes: learn (Matthew), quiz (Alicia), teach_back (Ken)")
+        status.append(f"Available concepts: {', '.join(c['title'] for c in self.concepts)}")
+        
+        return "\n".join(status)
 
 
 def prewarm(proc: JobProcess):
@@ -277,50 +282,88 @@ def prewarm(proc: JobProcess):
 
 async def entrypoint(ctx: JobContext):
     # Logging setup
-    # Add any other context you want in all log entries here
     ctx.log_context_fields = {
         "room": ctx.room.name,
     }
 
-    # Set up a voice AI pipeline using OpenAI, Cartesia, AssemblyAI, and the LiveKit turn detector
+    # Create the tutor assistant
+    tutor = TutorAssistant()
+    
+    # Pre-create TTS instances for each voice
+    tts_voices = {
+        'learn': murf.TTS(
+            voice="en-US-matthew",  # Matthew - warm, instructional
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True
+        ),
+        'quiz': murf.TTS(
+            voice="en-US-alicia",   # Alicia - engaging, questioning
+            style="Conversation", 
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True
+        ),
+        'teach_back': murf.TTS(
+            voice="en-US-ken",      # Ken - encouraging, evaluative
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2), 
+            text_pacing=True
+        )
+    }
+    
+    # Set up a voice AI pipeline - start with Matthew (learn mode)
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
+        # Speech-to-text (STT)
         stt=deepgram.STT(model="nova-3"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
-        # See all available models at https://docs.livekit.io/agents/models/llm/
-        llm=google.LLM(
-                model="gemini-2.5-flash",
-            ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
-        # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
-        tts=murf.TTS(
-                voice="en-US-matthew", 
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
-        # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
+        # Large Language Model (LLM) 
+        llm=google.LLM(model="gemini-2.5-flash"),
+        # Text-to-speech (TTS) - start with Matthew voice for learn mode
+        tts=tts_voices['learn'],
+        # VAD and turn detection
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # allow the LLM to generate a response while waiting for the end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
         preemptive_generation=True,
     )
 
-    # To use a realtime model instead of a voice pipeline, use the following session setup instead.
-    # (Note: This is for the OpenAI Realtime API. For other providers, see https://docs.livekit.io/agents/models/realtime/))
-    # 1. Install livekit-agents[openai]
-    # 2. Set OPENAI_API_KEY in .env.local
-    # 3. Add `from livekit.plugins import openai` to the top of this file
-    # 4. Use the following session setup instead of the version above
-    # session = AgentSession(
-    #     llm=openai.realtime.RealtimeModel(voice="marin")
-    # )
+    # Function to switch TTS voice based on mode
+    async def switch_voice_for_mode(mode):
+        if mode in tts_voices:
+            session._tts = tts_voices[mode]
+            logger.info(f"Switched to voice for {mode} mode")
+            return True
+        return False
 
-    # Metrics collection, to measure pipeline performance
-    # For more information, see https://docs.livekit.io/agents/build/metrics/
+    # Enhanced set_learning_mode function that also switches voice
+    original_set_learning_mode = tutor.set_learning_mode
+    async def enhanced_set_learning_mode(context, mode, concept_id=None):
+        # Switch voice first
+        await switch_voice_for_mode(mode)
+        # Then call original function
+        return await original_set_learning_mode(context, mode, concept_id)
+    
+    # Replace the original method
+    tutor.set_learning_mode = enhanced_set_learning_mode
+
+    # Also enhance other mode-switching functions
+    original_explain_concept = tutor.explain_concept
+    async def enhanced_explain_concept(context, concept_id=None):
+        await switch_voice_for_mode('learn')
+        return await original_explain_concept(context, concept_id)
+    tutor.explain_concept = enhanced_explain_concept
+
+    original_ask_quiz_question = tutor.ask_quiz_question  
+    async def enhanced_ask_quiz_question(context, concept_id=None):
+        await switch_voice_for_mode('quiz')
+        return await original_ask_quiz_question(context, concept_id)
+    tutor.ask_quiz_question = enhanced_ask_quiz_question
+
+    original_evaluate_teaching = tutor.evaluate_teaching
+    async def enhanced_evaluate_teaching(context, user_explanation):
+        await switch_voice_for_mode('teach_back')
+        return await original_evaluate_teaching(context, user_explanation)
+    tutor.evaluate_teaching = enhanced_evaluate_teaching
+
+    # Metrics collection
     usage_collector = metrics.UsageCollector()
 
     @session.on("metrics_collected")
@@ -334,20 +377,11 @@ async def entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(log_usage)
 
-    # # Add a virtual avatar to the session, if desired
-    # # For other providers, see https://docs.livekit.io/agents/models/avatar/
-    # avatar = hedra.AvatarSession(
-    #   avatar_id="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/hedra
-    # )
-    # # Start the avatar and wait for it to join
-    # await avatar.start(session, room=ctx.room)
-
-    # Start the session, which initializes the voice pipeline and warms up the models
+    # Start the session
     await session.start(
-        agent=Assistant(),
+        agent=tutor,
         room=ctx.room,
         room_input_options=RoomInputOptions(
-            # For telephony applications, use `BVCTelephony` for best results
             noise_cancellation=noise_cancellation.BVC(),
         ),
     )
