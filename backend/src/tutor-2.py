@@ -4,6 +4,35 @@ import json
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, field
+from typing import Optional
+
+from dotenv import load_dotenv
+from livekit.agents import ( #type: ignore
+    Agent,
+    AgentSession,
+    JobContext,
+    JobProcess,
+    MetricsCollectedEvent,
+    RoomInputOptions,
+    WorkerOptions,
+    cli,
+    metrics,
+    tokenize,
+    function_tool,
+    RunContext
+)
+from livekit.plugins import murf, silero, google, deepgram, noise_cancellation #type: ignore
+from livekit.plugins.turn_detector.multilingual import MultilingualModel #type: ignore
+from livekit.agents import ChatContext #type: ignore
+
+logger = logging.getLogger("agent")
+
+load_dotenv(".env")
+import logging
+import json
+from datetime import datetime
+from pathlib import Path
+from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 
 from dotenv import load_dotenv
@@ -129,11 +158,7 @@ class LearnAgent(BaseAgent):
     def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
         instructions = """You are Matthew, a warm and instructional tutor focused on explaining programming concepts clearly.
 
-        CRITICAL: When you first take over from another agent, IMMEDIATELY start with this exact introduction:
-        "Hi! I'm Matthew, your learning guide! I'm here to explain programming concepts in simple, easy-to-understand terms. What concept would you like to explore today?"
-
         Your role is to:
-        - Always start with the introduction above when you first take control
         - Explain programming concepts in simple, beginner-friendly terms
         - Use the provided concept summaries from the content file
         - Ask follow-up questions to deepen understanding
@@ -175,7 +200,7 @@ class LearnAgent(BaseAgent):
     @function_tool
     async def transfer_to_teach_back_mode(self, context: RunContext[TutorData]) -> Agent:
         """Switch to teach back mode."""
-        await self.session.say("Great! Now you can practice explaining this concept back to us.")
+        await self.session.say("Great! Now you can practice explaining this concept back to me.")
         return await self._transfer_to_agent("teach_back", context)
 
 
@@ -185,11 +210,7 @@ class QuizAgent(BaseAgent):
     def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
         instructions = """You are Alicia, an engaging and questioning tutor focused on testing understanding through quizzes.
 
-        CRITICAL: When you first take over from another agent, IMMEDIATELY start with this exact introduction:
-        "Hi there! I'm Alicia, your quiz master! I love testing knowledge and helping you discover what you've learned. Which concept are you ready to be quizzed on?"
-
         Your role is to:
-        - Always start with the introduction above when you first take control
         - Ask quiz questions about programming concepts using the sample questions from the content file
         - Make questions challenging but fair
         - Give hints if users struggle
@@ -239,11 +260,7 @@ class TeachBackAgent(BaseAgent):
     def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
         instructions = """You are Ken, an encouraging and evaluative tutor focused on active recall through teaching back.
 
-        CRITICAL: When you first take over from another agent, IMMEDIATELY start with this exact introduction:
-        "Hello! I'm Ken, your teach-back coach! This is where the real learning magic happens. I'll listen as you explain concepts in your own words, and I'll give you helpful feedback to strengthen your understanding. What concept would you like to teach me about?"
-
         Your role is to:
-        - Always start with the introduction above when you first take control
         - Ask users to explain programming concepts in their own words
         - Provide constructive feedback on their explanations
         - Score their understanding based on key concepts covered
@@ -398,5 +415,3 @@ async def entrypoint(ctx: JobContext):
 
 if __name__ == "__main__":
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
-
-

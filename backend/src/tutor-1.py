@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from dotenv import load_dotenv
 from livekit.agents import ( #type: ignore
@@ -29,61 +29,16 @@ logger = logging.getLogger("agent")
 
 load_dotenv(".env")
 
-# Configuration constants - can be moved to env vars or config file
-CONFIG = {
-    "stt_model": "nova-3",
-    "llm_model": "gemini-2.5-flash",
-    "voices": {
-        "tutor": "en-US-matthew",
-        "learn": "en-US-matthew",
-        "quiz": "en-US-alicia",
-        "teach_back": "en-US-ken"
-    },
-    "content_file": Path(__file__).parent.parent / "shared-data" / "day4_tutor_content.json",
-    "key_terms": {
-        'variables': ['store', 'value', 'container', 'label', 'reuse'],
-        'loops': ['repeat', 'iterate', 'for', 'while', 'condition'],
-        'functions': ['reusable', 'parameter', 'input', 'return', 'block'],
-        'conditionals': ['if', 'condition', 'decision', 'true', 'false', 'else']
-    }
-}
-
 
 @dataclass
 class TutorData:
     """Shared data for the tutoring session."""
-    concepts: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # id -> concept dict
+    concepts: list = field(default_factory=list)
     current_mode: Optional[str] = None  # 'learn', 'quiz', 'teach_back'
-    current_concept: Optional[Dict[str, Any]] = None
+    current_concept: Optional[dict] = None
 
 
-class BaseAgent(Agent):
-    """Base agent class with common initialization and transfer logic."""
-    
-    def __init__(self, instructions: str, voice_key: str, chat_ctx: Optional[ChatContext] = None) -> None:
-        super().__init__(
-            instructions=instructions,
-            chat_ctx=chat_ctx,
-            stt=deepgram.STT(model=CONFIG["stt_model"]),
-            llm=google.LLM(model=CONFIG["llm_model"]),
-            tts=murf.TTS(
-                voice=CONFIG["voices"][voice_key],
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
-            vad=silero.VAD.load(),
-        )
-
-    async def _transfer_to_agent(self, mode: str, context: RunContext[TutorData]) -> Agent:
-        """Transfer to the specified mode agent."""
-        userdata = context.userdata
-        next_agent = userdata.personas[mode]
-        userdata.prev_agent = self
-        return next_agent
-
-
-class TutorAgent(BaseAgent):
+class TutorAgent(Agent):
     """Main agent that greets users and routes to learning modes."""
     
     def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
@@ -102,7 +57,37 @@ class TutorAgent(BaseAgent):
 
         Be welcoming and encouraging. Users can switch modes anytime by saying things like "switch to quiz mode" or "I want to learn about variables"."""
 
-        super().__init__(instructions=instructions, voice_key="tutor", chat_ctx=chat_ctx)
+        super().__init__(
+            instructions=instructions,
+            chat_ctx=chat_ctx,
+            stt=deepgram.STT(model="nova-3"),
+            llm=google.LLM(model="gemini-2.5-flash"),
+            tts=murf.TTS(
+                voice="en-US-matthew",  # Matthew - warm, instructional
+                style="Conversation",
+                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+                text_pacing=True
+            ),
+            vad=silero.VAD.load(),
+        )
+        
+        # Load content
+        self.load_content()
+
+    def load_content(self):
+        """Load programming concepts from the JSON file."""
+        content_file = Path(__file__).parent.parent / "shared-data" / "day4_tutor_content.json"
+        try:
+            if content_file.exists():
+                with open(content_file, 'r', encoding='utf-8') as f:
+                    self.concepts = json.load(f)
+                    logger.info(f"Loaded {len(self.concepts)} programming concepts")
+            else:
+                logger.error(f"Content file not found: {content_file}")
+                self.concepts = []
+        except Exception as e:
+            logger.error(f"Error loading content: {e}")
+            self.concepts = []
 
     @function_tool
     async def transfer_to_learn_mode(self, context: RunContext[TutorData]) -> Agent:
@@ -122,18 +107,21 @@ class TutorAgent(BaseAgent):
         await self.session.say("Perfect! I'll connect you with our Teach Back agent who will help you practice explaining concepts.")
         return await self._transfer_to_agent("teach_back", context)
 
+    async def _transfer_to_agent(self, mode: str, context: RunContext[TutorData]) -> Agent:
+        """Transfer to the specified mode agent."""
+        userdata = context.userdata
+        next_agent = userdata.personas[mode]
+        userdata.prev_agent = self
+        return next_agent
 
-class LearnAgent(BaseAgent):
+
+class LearnAgent(Agent):
     """Agent for explaining programming concepts."""
     
     def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
         instructions = """You are Matthew, a warm and instructional tutor focused on explaining programming concepts clearly.
 
-        CRITICAL: When you first take over from another agent, IMMEDIATELY start with this exact introduction:
-        "Hi! I'm Matthew, your learning guide! I'm here to explain programming concepts in simple, easy-to-understand terms. What concept would you like to explore today?"
-
         Your role is to:
-        - Always start with the introduction above when you first take control
         - Explain programming concepts in simple, beginner-friendly terms
         - Use the provided concept summaries from the content file
         - Ask follow-up questions to deepen understanding
@@ -144,20 +132,32 @@ class LearnAgent(BaseAgent):
 
         Be patient and thorough in your explanations. When users want to switch modes, transfer them appropriately."""
 
-        super().__init__(instructions=instructions, voice_key="learn", chat_ctx=chat_ctx)
+        super().__init__(
+            instructions=instructions,
+            chat_ctx=chat_ctx,
+            stt=deepgram.STT(model="nova-3"),
+            llm=google.LLM(model="gemini-2.5-flash"),
+            tts=murf.TTS(
+                voice="en-US-matthew",  # Matthew - warm, instructional
+                style="Conversation",
+                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+                text_pacing=True
+            ),
+            vad=silero.VAD.load(),
+        )
 
     @function_tool
     async def explain_concept(self, context: RunContext[TutorData], concept_id: str = None) -> str:
         """Explain a specific concept."""
         if concept_id:
-            concept = context.userdata.concepts.get(concept_id)
+            concept = next((c for c in context.userdata.concepts if c['id'] == concept_id), None)
             if not concept:
                 return f"Concept '{concept_id}' not found."
         else:
             # Use current concept or ask for one
             concept = context.userdata.current_concept
             if not concept:
-                available = ', '.join(c['title'] for c in context.userdata.concepts.values())
+                available = ', '.join(c['title'] for c in context.userdata.concepts)
                 return f"Which concept would you like me to explain? Available: {available}"
         
         context.userdata.current_concept = concept
@@ -175,21 +175,24 @@ class LearnAgent(BaseAgent):
     @function_tool
     async def transfer_to_teach_back_mode(self, context: RunContext[TutorData]) -> Agent:
         """Switch to teach back mode."""
-        await self.session.say("Great! Now you can practice explaining this concept back to us.")
+        await self.session.say("Great! Now you can practice explaining this concept back to me.")
         return await self._transfer_to_agent("teach_back", context)
 
+    async def _transfer_to_agent(self, mode: str, context: RunContext[TutorData]) -> Agent:
+        """Transfer to the specified mode agent."""
+        userdata = context.userdata
+        next_agent = userdata.personas[mode]
+        userdata.prev_agent = self
+        return next_agent
 
-class QuizAgent(BaseAgent):
+
+class QuizAgent(Agent):
     """Agent for quizzing users on programming concepts."""
     
     def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
         instructions = """You are Alicia, an engaging and questioning tutor focused on testing understanding through quizzes.
 
-        CRITICAL: When you first take over from another agent, IMMEDIATELY start with this exact introduction:
-        "Hi there! I'm Alicia, your quiz master! I love testing knowledge and helping you discover what you've learned. Which concept are you ready to be quizzed on?"
-
         Your role is to:
-        - Always start with the introduction above when you first take control
         - Ask quiz questions about programming concepts using the sample questions from the content file
         - Make questions challenging but fair
         - Give hints if users struggle
@@ -200,19 +203,31 @@ class QuizAgent(BaseAgent):
 
         Be encouraging and supportive. When users want to switch modes, transfer them appropriately."""
 
-        super().__init__(instructions=instructions, voice_key="quiz", chat_ctx=chat_ctx)
+        super().__init__(
+            instructions=instructions,
+            chat_ctx=chat_ctx,
+            stt=deepgram.STT(model="nova-3"),
+            llm=google.LLM(model="gemini-2.5-flash"),
+            tts=murf.TTS(
+                voice="en-US-alicia",  # Alicia - engaging, questioning
+                style="Conversation",
+                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+                text_pacing=True
+            ),
+            vad=silero.VAD.load(),
+        )
 
     @function_tool
     async def ask_quiz_question(self, context: RunContext[TutorData], concept_id: str = None) -> str:
         """Ask a quiz question about a concept."""
         if concept_id:
-            concept = context.userdata.concepts.get(concept_id)
+            concept = next((c for c in context.userdata.concepts if c['id'] == concept_id), None)
             if not concept:
                 return f"Concept '{concept_id}' not found."
         else:
             concept = context.userdata.current_concept
             if not concept:
-                available = ', '.join(c['title'] for c in context.userdata.concepts.values())
+                available = ', '.join(c['title'] for c in context.userdata.concepts)
                 return f"Which concept should I quiz you on? Available: {available}"
         
         context.userdata.current_concept = concept
@@ -232,18 +247,21 @@ class QuizAgent(BaseAgent):
         await self.session.say("Now let's see if you can explain this concept back to me!")
         return await self._transfer_to_agent("teach_back", context)
 
+    async def _transfer_to_agent(self, mode: str, context: RunContext[TutorData]) -> Agent:
+        """Transfer to the specified mode agent."""
+        userdata = context.userdata
+        next_agent = userdata.personas[mode]
+        userdata.prev_agent = self
+        return next_agent
 
-class TeachBackAgent(BaseAgent):
+
+class TeachBackAgent(Agent):
     """Agent for having users teach concepts back."""
     
     def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
         instructions = """You are Ken, an encouraging and evaluative tutor focused on active recall through teaching back.
 
-        CRITICAL: When you first take over from another agent, IMMEDIATELY start with this exact introduction:
-        "Hello! I'm Ken, your teach-back coach! This is where the real learning magic happens. I'll listen as you explain concepts in your own words, and I'll give you helpful feedback to strengthen your understanding. What concept would you like to teach me about?"
-
         Your role is to:
-        - Always start with the introduction above when you first take control
         - Ask users to explain programming concepts in their own words
         - Provide constructive feedback on their explanations
         - Score their understanding based on key concepts covered
@@ -254,19 +272,31 @@ class TeachBackAgent(BaseAgent):
 
         Be encouraging and supportive. Focus on what they got right and gently suggest areas for improvement."""
 
-        super().__init__(instructions=instructions, voice_key="teach_back", chat_ctx=chat_ctx)
+        super().__init__(
+            instructions=instructions,
+            chat_ctx=chat_ctx,
+            stt=deepgram.STT(model="nova-3"),
+            llm=google.LLM(model="gemini-2.5-flash"),
+            tts=murf.TTS(
+                voice="en-US-ken",  # Ken - encouraging, evaluative
+                style="Conversation",
+                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+                text_pacing=True
+            ),
+            vad=silero.VAD.load(),
+        )
 
     @function_tool
     async def prompt_teach_back(self, context: RunContext[TutorData], concept_id: str = None) -> str:
         """Prompt user to teach back a concept."""
         if concept_id:
-            concept = context.userdata.concepts.get(concept_id)
+            concept = next((c for c in context.userdata.concepts if c['id'] == concept_id), None)
             if not concept:
                 return f"Concept '{concept_id}' not found."
         else:
             concept = context.userdata.current_concept
             if not concept:
-                available = ', '.join(c['title'] for c in context.userdata.concepts.values())
+                available = ', '.join(c['title'] for c in context.userdata.concepts)
                 return f"Which concept would you like to teach me? Available: {available}"
         
         context.userdata.current_concept = concept
@@ -282,8 +312,15 @@ class TeachBackAgent(BaseAgent):
             return "Please select a concept first."
         
         # Simple evaluation based on key terms
+        key_terms = {
+            'variables': ['store', 'value', 'container', 'label', 'reuse'],
+            'loops': ['repeat', 'iterate', 'for', 'while', 'condition'],
+            'functions': ['reusable', 'parameter', 'input', 'return', 'block'],
+            'conditionals': ['if', 'condition', 'decision', 'true', 'false', 'else']
+        }
+        
         user_lower = user_explanation.lower()
-        concept_terms = CONFIG["key_terms"].get(concept['id'], [])
+        concept_terms = key_terms.get(concept['id'], [])
         found_terms = [term for term in concept_terms if term in user_lower]
         
         # Provide feedback
@@ -316,6 +353,13 @@ class TeachBackAgent(BaseAgent):
         await self.session.say("Ready for a quiz to test your knowledge?")
         return await self._transfer_to_agent("quiz", context)
 
+    async def _transfer_to_agent(self, mode: str, context: RunContext[TutorData]) -> Agent:
+        """Transfer to the specified mode agent."""
+        userdata = context.userdata
+        next_agent = userdata.personas[mode]
+        userdata.prev_agent = self
+        return next_agent
+
 
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
@@ -337,19 +381,18 @@ async def entrypoint(ctx: JobContext):
     teach_back_agent = TeachBackAgent()
     
     # Load concepts into userdata
-    content_file = CONFIG["content_file"]
+    content_file = Path(__file__).parent.parent / "shared-data" / "day4_tutor_content.json"
     try:
         if content_file.exists():
             with open(content_file, 'r', encoding='utf-8') as f:
-                concepts_list = json.load(f)
-                userdata.concepts = {c['id']: c for c in concepts_list}
+                userdata.concepts = json.load(f)
                 logger.info(f"Loaded {len(userdata.concepts)} programming concepts")
         else:
             logger.error(f"Content file not found: {content_file}")
-            userdata.concepts = {}
+            userdata.concepts = []
     except Exception as e:
         logger.error(f"Error loading content: {e}")
-        userdata.concepts = {}
+        userdata.concepts = []
     
     # Register agents for handoffs
     userdata.personas = {
@@ -398,5 +441,3 @@ async def entrypoint(ctx: JobContext):
 
 if __name__ == "__main__":
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
-
-
