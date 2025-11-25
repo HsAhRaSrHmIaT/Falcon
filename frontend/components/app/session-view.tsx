@@ -81,13 +81,11 @@ export const SessionView = ({
   };
 
   useEffect(() => {
-    const lastMessage = messages.at(-1);
-    const lastMessageIsLocal = lastMessage?.from?.isLocal === true;
-
-    if (scrollAreaRef.current && lastMessageIsLocal) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+    // Auto-open chat when new messages arrive
+    if (messages.length > 0 && !chatOpen) {
+      setChatOpen(true);
     }
-  }, [messages]);
+  }, [messages, chatOpen]);
 
   return (
     <section className="bg-background relative z-10 h-full w-full overflow-hidden" {...props}>

@@ -12,3 +12,5 @@ KMS
 .ruff_cache
 
 orders/
+wellness_logs/
+shared-data/
