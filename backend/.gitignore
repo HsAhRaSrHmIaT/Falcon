@@ -13,4 +13,5 @@ KMS
 
 orders/
 wellness_logs/
-shared-data/
+# shared-data/
+leads/

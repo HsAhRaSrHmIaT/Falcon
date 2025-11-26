@@ -1,0 +1,26 @@
+[
+    {
+        "id": "variables",
+        "title": "Variables",
+        "summary": "Variables store values so you can reuse them later. Think of a variable as a labeled container that holds information. For example, in Python you might write 'name = John' to store the value 'John' in a variable called 'name'. Variables make your code flexible and reusable because you can change the value once and it updates everywhere the variable is used.",
+        "sample_question": "What is a variable and why is it useful in programming?"
+    },
+    {
+        "id": "loops",
+        "title": "Loops",
+        "summary": "Loops let you repeat an action multiple times without writing the same code over and over. There are two main types: 'for' loops repeat a specific number of times or iterate through a collection, while 'while' loops continue repeating as long as a condition is true. For example, a for loop can print numbers 1 to 10, and a while loop can keep asking for user input until they enter 'quit'.",
+        "sample_question": "Explain the difference between a for loop and a while loop, and give an example of when you'd use each."
+    },
+    {
+        "id": "functions",
+        "title": "Functions",
+        "summary": "Functions are reusable blocks of code that perform specific tasks. They take inputs (called parameters), process them, and often return a result. Functions help organize code, reduce repetition, and make programs easier to debug and maintain. For example, a function called 'calculate_area' might take length and width as inputs and return the area of a rectangle.",
+        "sample_question": "What is a function and how do parameters and return values work?"
+    },
+    {
+        "id": "conditionals",
+        "title": "Conditional Statements",
+        "summary": "Conditional statements let your program make decisions based on different conditions. The most common is the 'if' statement, which executes code only when a condition is true. You can also use 'elif' for additional conditions and 'else' for what happens when none of the conditions are met. This allows programs to respond differently to different situations.",
+        "sample_question": "How do if, elif, and else statements work together to control program flow?"
+    }
+]
