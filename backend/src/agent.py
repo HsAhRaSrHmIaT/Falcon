@@ -33,41 +33,79 @@ load_dotenv(".env")
 CONFIG = {
     "stt_model": "nova-3",
     "llm_model": "gemini-2.5-flash",
-    "voices": {
-        "tutor": "en-US-matthew",
-        "learn": "en-US-matthew",
-        "quiz": "en-US-alicia",
-        "teach_back": "en-US-ken"
-    },
-    "content_file": Path(__file__).parent.parent / "shared-data" / "day4_tutor_content.json",
-    "key_terms": {
-        'variables': ['store', 'value', 'container', 'label', 'reuse'],
-        'loops': ['repeat', 'iterate', 'for', 'while', 'condition'],
-        'functions': ['reusable', 'parameter', 'input', 'return', 'block'],
-        'conditionals': ['if', 'condition', 'decision', 'true', 'false', 'else']
-    }
+    "voice": "en-US-alicia",  # Professional female voice for SDR
+    "company_data_file": Path(__file__).parent.parent / "shared-data" / "razorpay_company_data.json",
+    "leads_directory": Path(__file__).parent.parent / "leads"
 }
 
 
 @dataclass
-class TutorData:
-    """Shared data for the tutoring session."""
-    concepts: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # id -> concept dict
-    current_mode: Optional[str] = None  # 'learn', 'quiz', 'teach_back'
-    current_concept: Optional[Dict[str, Any]] = None
+class LeadData:
+    """Data structure for collecting lead information."""
+    name: Optional[str] = None
+    company: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
+    use_case: Optional[str] = None
+    team_size: Optional[str] = None
+    timeline: Optional[str] = None
+    notes: Optional[str] = None
+    call_start_time: str = field(default_factory=lambda: datetime.now().isoformat())
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert lead data to dictionary for JSON serialization."""
+        return {
+            'name': self.name,
+            'company': self.company,
+            'email': self.email,
+            'role': self.role,
+            'use_case': self.use_case,
+            'team_size': self.team_size,
+            'timeline': self.timeline,
+            'notes': self.notes,
+            'call_start_time': self.call_start_time,
+            'call_end_time': datetime.now().isoformat()
+        }
+    
+    def get_completion_status(self) -> Dict[str, bool]:
+        """Get which fields have been collected."""
+        return {
+            'name': self.name is not None,
+            'company': self.company is not None,
+            'email': self.email is not None,
+            'role': self.role is not None,
+            'use_case': self.use_case is not None,
+            'team_size': self.team_size is not None,
+            'timeline': self.timeline is not None
+        }
+    
+    def get_missing_fields(self) -> list[str]:
+        """Get list of missing required fields."""
+        status = self.get_completion_status()
+        return [field for field, completed in status.items() if not completed]
+
+
+@dataclass
+class SDRData:
+    """Shared data for the SDR session."""
+    company_info: Dict[str, Any] = field(default_factory=dict)
+    faq_data: list[Dict[str, str]] = field(default_factory=list)
+    lead_data: LeadData = field(default_factory=LeadData)
+    conversation_stage: str = "greeting"  # greeting, discovery, qualification, closing
+    call_summary: Optional[str] = None
 
 
 class BaseAgent(Agent):
-    """Base agent class with common initialization and transfer logic."""
+    """Base agent class with common initialization."""
     
-    def __init__(self, instructions: str, voice_key: str, chat_ctx: Optional[ChatContext] = None) -> None:
+    def __init__(self, instructions: str, chat_ctx: Optional[ChatContext] = None) -> None:
         super().__init__(
             instructions=instructions,
             chat_ctx=chat_ctx,
             stt=deepgram.STT(model=CONFIG["stt_model"]),
             llm=google.LLM(model=CONFIG["llm_model"]),
             tts=murf.TTS(
-                voice=CONFIG["voices"][voice_key],
+                voice=CONFIG["voice"],
                 style="Conversation",
                 tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
                 text_pacing=True
@@ -75,249 +113,212 @@ class BaseAgent(Agent):
             vad=silero.VAD.load(),
         )
 
-    async def _transfer_to_agent(self, mode: str, context: RunContext[TutorData]) -> Agent:
-        """Transfer to the specified mode agent."""
-        userdata = context.userdata
-        next_agent = userdata.personas[mode]
-        userdata.prev_agent = self
-        return next_agent
 
-
-class TutorAgent(BaseAgent):
-    """Main agent that greets users and routes to learning modes."""
+class SDRAgent(BaseAgent):
+    """Sales Development Representative agent for lead qualification and company information."""
     
     def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
-        instructions = """You are a friendly Active Recall Coach that helps users learn programming concepts.
+        instructions = """You are Aurora, a friendly and professional Sales Development Representative at Razorpay. Pronounce
 
         Your role is to:
-        1. Greet the user warmly and ask which learning mode they'd like to use
-        2. Explain the three modes: learn (explanations), quiz (questions), teach_back (teaching back)
-        3. Transfer them to the appropriate specialized agent based on their choice
-        4. Allow users to switch modes at any time by asking
+        1. Warmly greet visitors and introduce yourself and Razorpay
+        2. Discover what brought them to Razorpay and what business challenges they're facing
+        3. Answer questions about Razorpay's products, services, and pricing using the FAQ knowledge
+        4. Naturally collect lead qualification information during the conversation
+        5. Provide value and build rapport while understanding their business needs
+        6. Create a summary when they're ready to end the call
 
-        Available modes:
-        - learn: Get clear explanations of programming concepts
-        - quiz: Test your understanding with questions  
-        - teach_back: Explain concepts back to receive feedback
+        CRITICAL: When the user provides any of the following information, you MUST immediately call the collect_lead_info function:
+        - Name: call collect_lead_info(field="name", value=their_name)
+        - Company/Business name: call collect_lead_info(field="company", value=company_name)
+        - Email: call collect_lead_info(field="email", value=email_address)
+        - Role/Position: call collect_lead_info(field="role", value=their_role)
+        - Use case/what they want: call collect_lead_info(field="use_case", value=their_needs)
+        - Team size/employees: call collect_lead_info(field="team_size", value=team_info)
+        - Timeline: call collect_lead_info(field="timeline", value=timeline_info)
 
-        Be welcoming and encouraging. Users can switch modes anytime by saying things like "switch to quiz mode" or "I want to learn about variables"."""
+        Lead Information to Collect (do this naturally during conversation):
+        - Name and company
+        - Email address
+        - Role/position
+        - Use case (what they want to use Razorpay for - payments, banking, loans, payroll)
+        - Team/business size
+        - Timeline for implementation
 
-        super().__init__(instructions=instructions, voice_key="tutor", chat_ctx=chat_ctx)
+        Always be helpful, professional, and focused on understanding their business needs. 
+        Use the FAQ data to answer questions accurately and avoid making up information not in the knowledge base.
+        
+        When someone says they're done or ready to end the call, provide a summary and save their information."""
 
-    @function_tool
-    async def transfer_to_learn_mode(self, context: RunContext[TutorData]) -> Agent:
-        """Transfer to learn mode agent."""
-        await self.session.say("Great! I'll connect you with our Learn agent who will explain concepts clearly.")
-        return await self._transfer_to_agent("learn", context)
-
-    @function_tool
-    async def transfer_to_quiz_mode(self, context: RunContext[TutorData]) -> Agent:
-        """Transfer to quiz mode agent."""
-        await self.session.say("Excellent! I'll connect you with our Quiz agent who will test your understanding.")
-        return await self._transfer_to_agent("quiz", context)
-
-    @function_tool
-    async def transfer_to_teach_back_mode(self, context: RunContext[TutorData]) -> Agent:
-        """Transfer to teach back mode agent."""
-        await self.session.say("Perfect! I'll connect you with our Teach Back agent who will help you practice explaining concepts.")
-        return await self._transfer_to_agent("teach_back", context)
-
-
-class LearnAgent(BaseAgent):
-    """Agent for explaining programming concepts."""
-    
-    def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
-        instructions = """You are Matthew, a warm and instructional tutor focused on explaining programming concepts clearly.
-
-        CRITICAL: When you first take over from another agent, IMMEDIATELY start with this exact introduction:
-        "Hi! I'm Matthew, your learning guide! I'm here to explain programming concepts in simple, easy-to-understand terms. What concept would you like to explore today?"
-
-        Your role is to:
-        - Always start with the introduction above when you first take control
-        - Explain programming concepts in simple, beginner-friendly terms
-        - Use the provided concept summaries from the content file
-        - Ask follow-up questions to deepen understanding
-        - Encourage the user and be supportive
-        - Allow users to switch to other modes when they're ready
-
-        Available concepts: variables, loops, functions, conditionals
-
-        Be patient and thorough in your explanations. When users want to switch modes, transfer them appropriately."""
-
-        super().__init__(instructions=instructions, voice_key="learn", chat_ctx=chat_ctx)
+        super().__init__(instructions=instructions, chat_ctx=chat_ctx)
 
     @function_tool
-    async def explain_concept(self, context: RunContext[TutorData], concept_id: str = None) -> str:
-        """Explain a specific concept."""
-        if concept_id:
-            concept = context.userdata.concepts.get(concept_id)
-            if not concept:
-                return f"Concept '{concept_id}' not found."
+    async def search_faq(self, context: RunContext[SDRData], question: str) -> str:
+        """Search FAQ for relevant answers to user questions."""
+        question_lower = question.lower()
+        best_match = None
+        best_score = 0
+        
+        # Simple keyword matching for FAQ search
+        for faq_item in context.userdata.faq_data:
+            faq_question = faq_item['question'].lower()
+            faq_answer = faq_item['answer'].lower()
+            
+            # Count common words between user question and FAQ
+            question_words = set(question_lower.split())
+            faq_words = set(faq_question.split() + faq_answer.split())
+            common_words = question_words.intersection(faq_words)
+            
+            if len(common_words) > best_score:
+                best_score = len(common_words)
+                best_match = faq_item
+        
+        if best_match and best_score > 0:
+            return f"Based on our information: {best_match['answer']}"
         else:
-            # Use current concept or ask for one
-            concept = context.userdata.current_concept
-            if not concept:
-                available = ', '.join(c['title'] for c in context.userdata.concepts.values())
-                return f"Which concept would you like me to explain? Available: {available}"
+            # Fallback to general company information
+            company_info = context.userdata.company_info
+            return f"I'd be happy to help with information about {company_info['company']['name']}. {company_info['company']['description']} Could you be more specific about what you'd like to know?"
+
+    @function_tool
+    async def collect_lead_info(self, context: RunContext[SDRData], field: str, value: str) -> str:
+        """Collect and store lead information."""
+        lead = context.userdata.lead_data
         
-        context.userdata.current_concept = concept
-        context.userdata.current_mode = 'learn'
-        
-        explanation = f"Let me explain {concept['title']}:\n\n{concept['summary']}\n\nDoes that make sense? Would you like me to elaborate on any part, or would you prefer to quiz yourself on this concept?"
-        return explanation
-
-    @function_tool
-    async def transfer_to_quiz_mode(self, context: RunContext[TutorData]) -> Agent:
-        """Switch to quiz mode."""
-        await self.session.say("Alright, let's test your understanding! Switching to quiz mode.")
-        return await self._transfer_to_agent("quiz", context)
-
-    @function_tool
-    async def transfer_to_teach_back_mode(self, context: RunContext[TutorData]) -> Agent:
-        """Switch to teach back mode."""
-        await self.session.say("Great! Now you can practice explaining this concept back to us.")
-        return await self._transfer_to_agent("teach_back", context)
-
-
-class QuizAgent(BaseAgent):
-    """Agent for quizzing users on programming concepts."""
-    
-    def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
-        instructions = """You are Alicia, an engaging and questioning tutor focused on testing understanding through quizzes.
-
-        CRITICAL: When you first take over from another agent, IMMEDIATELY start with this exact introduction:
-        "Hi there! I'm Alicia, your quiz master! I love testing knowledge and helping you discover what you've learned. Which concept are you ready to be quizzed on?"
-
-        Your role is to:
-        - Always start with the introduction above when you first take control
-        - Ask quiz questions about programming concepts using the sample questions from the content file
-        - Make questions challenging but fair
-        - Give hints if users struggle
-        - Provide encouraging feedback on answers
-        - Allow users to switch to other modes when they're ready
-
-        Available concepts: variables, loops, functions, conditionals
-
-        Be encouraging and supportive. When users want to switch modes, transfer them appropriately."""
-
-        super().__init__(instructions=instructions, voice_key="quiz", chat_ctx=chat_ctx)
-
-    @function_tool
-    async def ask_quiz_question(self, context: RunContext[TutorData], concept_id: str = None) -> str:
-        """Ask a quiz question about a concept."""
-        if concept_id:
-            concept = context.userdata.concepts.get(concept_id)
-            if not concept:
-                return f"Concept '{concept_id}' not found."
+        if field == "name":
+            lead.name = value
+            return f"Great to meet you, {value}! "
+        elif field == "company":
+            lead.company = value
+            return f"Excellent! Tell me more about {value}. "
+        elif field == "email":
+            lead.email = value
+            return "Perfect! I'll make sure to follow up with you. "
+        elif field == "role":
+            lead.role = value
+            return f"Interesting! As a {value}, I can see how Razorpay's fintech solutions might fit into your work. "
+        elif field == "use_case":
+            lead.use_case = value
+            return "That's exactly the kind of business challenge Razorpay can help solve! "
+        elif field == "team_size":
+            lead.team_size = value
+            return "That context helps me understand your scale. "
+        elif field == "timeline":
+            lead.timeline = value
+            return "Good to know your timeline. "
         else:
-            concept = context.userdata.current_concept
-            if not concept:
-                available = ', '.join(c['title'] for c in context.userdata.concepts.values())
-                return f"Which concept should I quiz you on? Available: {available}"
-        
-        context.userdata.current_concept = concept
-        context.userdata.current_mode = 'quiz'
-        
-        return f"Here's a question about {concept['title']}: {concept['sample_question']}"
-
-    @function_tool
-    async def transfer_to_learn_mode(self, context: RunContext[TutorData]) -> Agent:
-        """Switch to learn mode."""
-        await self.session.say("Let's go back to learning mode for some explanations.")
-        return await self._transfer_to_agent("learn", context)
-
-    @function_tool
-    async def transfer_to_teach_back_mode(self, context: RunContext[TutorData]) -> Agent:
-        """Switch to teach back mode."""
-        await self.session.say("Now let's see if you can explain this concept back to me!")
-        return await self._transfer_to_agent("teach_back", context)
-
-
-class TeachBackAgent(BaseAgent):
-    """Agent for having users teach concepts back."""
-    
-    def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
-        instructions = """You are Ken, an encouraging and evaluative tutor focused on active recall through teaching back.
-
-        CRITICAL: When you first take over from another agent, IMMEDIATELY start with this exact introduction:
-        "Hello! I'm Ken, your teach-back coach! This is where the real learning magic happens. I'll listen as you explain concepts in your own words, and I'll give you helpful feedback to strengthen your understanding. What concept would you like to teach me about?"
-
-        Your role is to:
-        - Always start with the introduction above when you first take control
-        - Ask users to explain programming concepts in their own words
-        - Provide constructive feedback on their explanations
-        - Score their understanding based on key concepts covered
-        - Give specific suggestions for improvement
-        - Allow users to switch to other modes when they're ready
-
-        Available concepts: variables, loops, functions, conditionals
-
-        Be encouraging and supportive. Focus on what they got right and gently suggest areas for improvement."""
-
-        super().__init__(instructions=instructions, voice_key="teach_back", chat_ctx=chat_ctx)
-
-    @function_tool
-    async def prompt_teach_back(self, context: RunContext[TutorData], concept_id: str = None) -> str:
-        """Prompt user to teach back a concept."""
-        if concept_id:
-            concept = context.userdata.concepts.get(concept_id)
-            if not concept:
-                return f"Concept '{concept_id}' not found."
-        else:
-            concept = context.userdata.current_concept
-            if not concept:
-                available = ', '.join(c['title'] for c in context.userdata.concepts.values())
-                return f"Which concept would you like to teach me? Available: {available}"
-        
-        context.userdata.current_concept = concept
-        context.userdata.current_mode = 'teach_back'
-        
-        return f"Please explain {concept['title']} back to me in your own words. Take your time and cover the key points you remember."
-
-    @function_tool
-    async def evaluate_explanation(self, context: RunContext[TutorData], user_explanation: str) -> str:
-        """Evaluate the user's explanation and provide feedback."""
-        concept = context.userdata.current_concept
-        if not concept:
-            return "Please select a concept first."
-        
-        # Simple evaluation based on key terms
-        user_lower = user_explanation.lower()
-        concept_terms = CONFIG["key_terms"].get(concept['id'], [])
-        found_terms = [term for term in concept_terms if term in user_lower]
-        
-        # Provide feedback
-        if len(found_terms) >= len(concept_terms) * 0.6:
-            feedback = f"Excellent work! You covered the key aspects of {concept['title']}. "
-            if len(found_terms) == len(concept_terms):
-                feedback += "You mentioned all the important concepts!"
+            # Store any other information in notes
+            if lead.notes:
+                lead.notes += f"; {field}: {value}"
             else:
-                feedback += f"You got most of the important points. Great understanding!"
-        elif len(found_terms) >= len(concept_terms) * 0.3:
-            feedback = f"Good start! You understand some key aspects of {concept['title']}. "
-            missing = len(concept_terms) - len(found_terms)
-            feedback += f"Consider also mentioning aspects like how {concept['id']} help with organization and reusability in programming."
-        else:
-            feedback = f"I can see you're working on understanding {concept['title']}. "
-            feedback += f"Let me help clarify: {concept['summary'][:100]}... Would you like to try explaining it again?"
+                lead.notes = f"{field}: {value}"
+            return "I've noted that information. "
+
+    @function_tool
+    async def check_lead_completeness(self, context: RunContext[SDRData]) -> str:
+        """Check what lead information is still needed."""
+        lead = context.userdata.lead_data
+        missing_fields = lead.get_missing_fields()
         
-        feedback += f"\n\nWould you like to switch to a different mode or concept, or continue practicing?"
-        return feedback
+        if not missing_fields:
+            return "Great! I have all your key information. Is there anything else you'd like to know about Razorpay?"
+        
+        # Naturally ask for missing information
+        if "name" in missing_fields:
+            return "I'd love to personalize our conversation - what's your name?"
+        elif "company" in missing_fields:
+            return "What company are you with?"
+        elif "email" in missing_fields:
+            return "What's the best email to reach you at for follow-up?"
+        elif "role" in missing_fields:
+            return "What's your role at your company?"
+        elif "use_case" in missing_fields:
+            return "What brings you to Razorpay? What business challenges are you looking to solve?"
+        elif "team_size" in missing_fields:
+            return "Can you tell me about the size of your business or team?"
+        elif "timeline" in missing_fields:
+            return "What's your timeline for implementing a payment or fintech solution?"
+        
+        return "Is there anything else you'd like to know about how Razorpay can help your business?"
 
     @function_tool
-    async def transfer_to_learn_mode(self, context: RunContext[TutorData]) -> Agent:
-        """Switch to learn mode."""
-        await self.session.say("Let's review the concepts in learn mode.")
-        return await self._transfer_to_agent("learn", context)
+    async def create_call_summary(self, context: RunContext[SDRData]) -> str:
+        """Generate and save a call summary with lead information."""
+        lead = context.userdata.lead_data
+        company_info = context.userdata.company_info
+        
+        # Create summary
+        summary_parts = []
+        if lead.name:
+            summary_parts.append(f"Spoke with {lead.name}")
+        if lead.company and lead.role:
+            summary_parts.append(f"who is a {lead.role} at {lead.company}")
+        elif lead.company:
+            summary_parts.append(f"from {lead.company}")
+        elif lead.role:
+            summary_parts.append(f"who works as a {lead.role}")
+            
+        if lead.use_case:
+            summary_parts.append(f"They're interested in: {lead.use_case}")
+        
+        if lead.timeline:
+            summary_parts.append(f"Timeline: {lead.timeline}")
+            
+        if lead.team_size:
+            summary_parts.append(f"Team size: {lead.team_size}")
+        
+        summary = ". ".join(summary_parts) + "."
+        context.userdata.call_summary = summary
+        
+        # Save lead data to file
+        try:
+            leads_dir = CONFIG["leads_directory"]
+            leads_dir.mkdir(exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"lead_razorpay_{timestamp}.json"
+            filepath = leads_dir / filename
+            
+            lead_data_dict = lead.to_dict()
+            lead_data_dict["call_summary"] = summary
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(lead_data_dict, f, indent=2)
+                
+            logger.info(f"Lead data saved to: {filepath}")
+            
+        except Exception as e:
+            logger.error(f"Error saving lead data: {e}")
+        
+        # Return verbal summary
+        if summary_parts:
+            return f"Perfect! Let me summarize: {summary} Thanks for your time today! I'll follow up with you soon with more information about how Razorpay can help your business grow."
+        else:
+            return "Thanks for your interest in Razorpay! I'll follow up with you soon with more information."
 
     @function_tool
-    async def transfer_to_quiz_mode(self, context: RunContext[TutorData]) -> Agent:
-        """Switch to quiz mode."""
-        await self.session.say("Ready for a quiz to test your knowledge?")
-        return await self._transfer_to_agent("quiz", context)
+    async def get_company_overview(self, context: RunContext[SDRData]) -> str:
+        """Provide an overview of Razorpay's services."""
+        company_info = context.userdata.company_info
+        company = company_info["company"]
+        products = company_info["products"]
+        
+        overview = f"{company['name']} - {company['tagline']}. "
+        overview += f"{company['description']} "
+        overview += f"We offer several key solutions: "
+        
+        product_descriptions = []
+        for product_key, product_info in products.items():
+            product_descriptions.append(f"{product_info['name']} for {product_info['description']}")
+        
+        overview += ", ".join(product_descriptions)
+        overview += ". How can we help your business with payments and financial solutions?"
+        
+        return overview
 
 
 def prewarm(proc: JobProcess):
+    proc.userdata["vad"] = silero.VAD.load()
     proc.userdata["vad"] = silero.VAD.load()
 
 
@@ -327,40 +328,32 @@ async def entrypoint(ctx: JobContext):
         "room": ctx.room.name,
     }
 
-    # Initialize shared data
-    userdata = TutorData()
+    # Initialize SDR data
+    userdata = SDRData()
     
-    # Create all agents
-    tutor_agent = TutorAgent()
-    learn_agent = LearnAgent()
-    quiz_agent = QuizAgent()
-    teach_back_agent = TeachBackAgent()
-    
-    # Load concepts into userdata
-    content_file = CONFIG["content_file"]
+    # Load company data
+    company_data_file = CONFIG["company_data_file"]
     try:
-        if content_file.exists():
-            with open(content_file, 'r', encoding='utf-8') as f:
-                concepts_list = json.load(f)
-                userdata.concepts = {c['id']: c for c in concepts_list}
-                logger.info(f"Loaded {len(userdata.concepts)} programming concepts")
+        if company_data_file.exists():
+            with open(company_data_file, 'r', encoding='utf-8') as f:
+                company_data = json.load(f)
+                userdata.company_info = company_data
+                userdata.faq_data = company_data.get("faq", [])
+                logger.info(f"Loaded company data for {company_data['company']['name']}")
         else:
-            logger.error(f"Content file not found: {content_file}")
-            userdata.concepts = {}
+            logger.error(f"Company data file not found: {company_data_file}")
+            userdata.company_info = {}
+            userdata.faq_data = []
     except Exception as e:
-        logger.error(f"Error loading content: {e}")
-        userdata.concepts = {}
+        logger.error(f"Error loading company data: {e}")
+        userdata.company_info = {}
+        userdata.faq_data = []
     
-    # Register agents for handoffs
-    userdata.personas = {
-        "tutor": tutor_agent,
-        "learn": learn_agent,
-        "quiz": quiz_agent,
-        "teach_back": teach_back_agent
-    }
-
-    # Create the session with the main tutor agent
-    session = AgentSession[TutorData](
+    # Create SDR agent
+    sdr_agent = SDRAgent()
+    
+    # Create the session with the SDR agent
+    session = AgentSession[SDRData](
         userdata=userdata,
         stt=deepgram.STT(model="nova-3"),
         llm=google.LLM(model="gemini-2.5-flash"),
@@ -383,9 +376,9 @@ async def entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(log_usage)
 
-    # Start the session with the main tutor agent
+    # Start the session with the SDR agent
     await session.start(
-        agent=tutor_agent,
+        agent=sdr_agent,
         room=ctx.room,
         room_input_options=RoomInputOptions(
             noise_cancellation=noise_cancellation.BVC(),
@@ -398,5 +391,3 @@ async def entrypoint(ctx: JobContext):
 
 if __name__ == "__main__":
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
-
-

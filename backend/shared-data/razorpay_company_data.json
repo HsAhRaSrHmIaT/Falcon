@@ -1,0 +1,127 @@
+{
+    "company": {
+        "name": "Razorpay",
+        "tagline": "Power your finance, grow your business",
+        "description": "Razorpay is India's leading fintech company providing comprehensive payment solutions, business banking, lending, and payroll services to businesses of all sizes.",
+        "founded": "2014",
+        "headquarters": "Bangalore, India",
+        "website": "https://www.razorpay.com"
+    },
+    "products": {
+        "payment_gateway": {
+            "name": "Razorpay Payment Gateway",
+            "description": "Complete payment solution accepting 100+ payment methods",
+            "key_features": [
+                "Credit/Debit card payments",
+                "UPI, Net Banking, Wallets",
+                "International payments",
+                "Instant settlements",
+                "Fraud protection",
+                "Payment analytics"
+            ]
+        },
+        "razorpay_x": {
+            "name": "RazorpayX Business Banking",
+            "description": "Complete business banking solution with current accounts and automation",
+            "key_features": [
+                "Current account with high interest",
+                "Automated payouts",
+                "Expense management",
+                "Tax payments",
+                "Vendor payments",
+                "API-first banking"
+            ]
+        },
+        "razorpay_capital": {
+            "name": "Razorpay Capital",
+            "description": "Business loans and working capital solutions",
+            "key_features": [
+                "Instant business loans",
+                "Working capital financing",
+                "Revenue-based financing",
+                "Minimal documentation",
+                "Quick disbursals",
+                "Flexible repayment"
+            ]
+        },
+        "razorpay_payroll": {
+            "name": "Razorpay Payroll",
+            "description": "Complete payroll and HR management solution",
+            "key_features": [
+                "Automated salary processing",
+                "Tax compliance",
+                "Employee self-service",
+                "Statutory compliance",
+                "Attendance management",
+                "Reimbursement management"
+            ]
+        }
+    },
+    "target_customers": [
+        "E-commerce businesses",
+        "SaaS companies",
+        "Startups and SMEs",
+        "Enterprise businesses",
+        "Freelancers and consultants",
+        "Educational institutions",
+        "NGOs and non-profits",
+        "Subscription businesses",
+        "Marketplace platforms"
+    ],
+    "pricing": {
+        "payment_gateway": "Starting from 2% per transaction, volume-based discounts available",
+        "razorpay_x": "Zero balance current account, transaction-based pricing",
+        "razorpay_capital": "Interest rates starting from 1.5% per month, based on business profile",
+        "razorpay_payroll": "₹99 per employee per month for basic plan"
+    },
+    "faq": [
+        {
+            "question": "What does Razorpay do?",
+            "answer": "Razorpay is a comprehensive fintech platform that provides payment gateway services, business banking, lending solutions, and payroll management. We help businesses accept payments online, manage their finances, access credit, and run payroll operations efficiently."
+        },
+        {
+            "question": "Do you have a free tier?",
+            "answer": "Yes! We offer a free current account with RazorpayX with zero balance requirement. For payments, while we charge transaction fees, there's no setup cost or annual maintenance charges. You only pay when you earn."
+        },
+        {
+            "question": "Who is this for?",
+            "answer": "Razorpay serves businesses of all sizes - from freelancers and startups to large enterprises. Whether you're an e-commerce store, SaaS company, educational institution, or any business that needs to accept payments or manage finances digitally."
+        },
+        {
+            "question": "How much does it cost?",
+            "answer": "Our pricing is transparent and competitive. Payment gateway starts at 2% per transaction with volume discounts. RazorpayX current account is free with transaction-based charges. Capital loans start from 1.5% monthly interest. Payroll is ₹99 per employee per month."
+        },
+        {
+            "question": "What payment methods do you support?",
+            "answer": "We support 100+ payment methods including all major credit/debit cards, UPI, net banking, wallets like Paytm, PhonePe, Amazon Pay, international cards, and even EMI options. We're constantly adding new payment methods."
+        },
+        {
+            "question": "How quickly can I get started?",
+            "answer": "You can get started within 24-48 hours! Our onboarding is completely digital. Just submit your business documents, complete KYC verification, and you're ready to start accepting payments. Integration support is available."
+        },
+        {
+            "question": "Is it secure?",
+            "answer": "Absolutely! We're PCI DSS Level 1 compliant, the highest level of security certification. We use advanced fraud detection, machine learning algorithms, and bank-level encryption to protect all transactions and data."
+        },
+        {
+            "question": "Do you provide business loans?",
+            "answer": "Yes, through Razorpay Capital we provide instant business loans, working capital, and revenue-based financing. Loans are based on your payment history and business performance with minimal documentation and quick disbursals."
+        },
+        {
+            "question": "Can you help with international payments?",
+            "answer": "Yes! We support international card payments and are expanding global payment methods. You can accept payments from customers worldwide. We also provide multi-currency support for global businesses."
+        },
+        {
+            "question": "What kind of support do you provide?",
+            "answer": "We offer 24/7 customer support, dedicated relationship managers for business accounts, comprehensive documentation, integration support, and regular business reviews to help optimize your payment performance."
+        },
+        {
+            "question": "Do you have APIs for integration?",
+            "answer": "Yes! We have robust APIs and SDKs for all our products. Our developer-friendly documentation makes integration easy. We support multiple programming languages and provide sandbox environments for testing."
+        },
+        {
+            "question": "What is RazorpayX?",
+            "answer": "RazorpayX is our business banking platform offering current accounts, automated payouts, expense management, vendor payments, and tax payment solutions. It's designed to automate your entire money flow with APIs."
+        }
+    ]
+}
