@@ -1,0 +1,328 @@
+{
+    "catalog": {
+        "store_name": "FreshMart Express India",
+        "categories": {
+            "groceries": [
+                {
+                    "id": "bread_white",
+                    "name": "White Bread",
+                    "price": 45,
+                    "category": "groceries",
+                    "brand": "Britannia",
+                    "size": "20 slices",
+                    "tags": ["bread", "basic"]
+                },
+                {
+                    "id": "bread_wheat",
+                    "name": "Whole Wheat Bread",
+                    "price": 55,
+                    "category": "groceries",
+                    "brand": "Modern",
+                    "size": "20 slices",
+                    "tags": ["bread", "healthy", "whole-grain"]
+                },
+                {
+                    "id": "milk_whole",
+                    "name": "Whole Milk",
+                    "price": 65,
+                    "category": "groceries",
+                    "brand": "Amul",
+                    "size": "1 liter",
+                    "tags": ["dairy", "milk", "basic"]
+                },
+                {
+                    "id": "eggs_dozen",
+                    "name": "Large Eggs",
+                    "price": 75,
+                    "category": "groceries",
+                    "brand": "Local Farm",
+                    "size": "12 count",
+                    "tags": ["eggs", "protein", "basic"]
+                },
+                {
+                    "id": "butter",
+                    "name": "Amul Butter",
+                    "price": 55,
+                    "category": "groceries",
+                    "brand": "Amul",
+                    "size": "100 g",
+                    "tags": ["dairy", "butter", "baking"]
+                },
+                {
+                    "id": "paneer",
+                    "name": "Paneer (Cottage Cheese)",
+                    "price": 120,
+                    "category": "groceries",
+                    "brand": "Mother Dairy",
+                    "size": "200 g",
+                    "tags": ["dairy", "cheese", "protein"]
+                },
+                {
+                    "id": "rice_basmati",
+                    "name": "Basmati Rice",
+                    "price": 180,
+                    "category": "groceries",
+                    "brand": "India Gate",
+                    "size": "5 kg",
+                    "tags": ["grain", "rice", "staple"]
+                },
+                {
+                    "id": "dal_tur",
+                    "name": "Tur Dal (Pigeon Pea Lentils)",
+                    "price": 140,
+                    "category": "groceries",
+                    "brand": "Tata Sampann",
+                    "size": "1 kg",
+                    "tags": ["dal", "protein", "vegetarian"]
+                },
+                {
+                    "id": "pickle_mango",
+                    "name": "Mango Pickle",
+                    "price": 90,
+                    "category": "groceries",
+                    "brand": "Patanjali",
+                    "size": "500 g jar",
+                    "tags": ["pickle", "spicy", "condiment"]
+                },
+                {
+                    "id": "potato",
+                    "name": "Fresh Potatoes",
+                    "price": 40,
+                    "category": "groceries",
+                    "brand": "Farm Fresh",
+                    "size": "1 kg",
+                    "tags": ["vegetable", "potato", "staple"]
+                },
+                {
+                    "id": "oil_cooking",
+                    "name": "Cooking Oil",
+                    "price": 180,
+                    "category": "groceries",
+                    "brand": "Fortune",
+                    "size": "1 liter",
+                    "tags": ["oil", "cooking", "sunflower"]
+                },
+                {
+                    "id": "onions",
+                    "name": "Fresh Onions",
+                    "price": 30,
+                    "category": "groceries",
+                    "brand": "Farm Fresh",
+                    "size": "1 kg",
+                    "tags": ["vegetable", "onion", "staple"]
+                },
+                {
+                    "id": "tomatoes",
+                    "name": "Fresh Tomatoes",
+                    "price": 50,
+                    "category": "groceries",
+                    "brand": "Farm Fresh",
+                    "size": "1 kg",
+                    "tags": ["vegetable", "tomato", "fresh"]
+                },
+                {
+                    "id": "ginger_garlic",
+                    "name": "Ginger Garlic Paste",
+                    "price": 45,
+                    "category": "groceries",
+                    "brand": "Everest",
+                    "size": "200g jar",
+                    "tags": ["paste", "spice", "flavor"]
+                },
+                {
+                    "id": "spice_turmeric",
+                    "name": "Turmeric Powder",
+                    "price": 35,
+                    "category": "groceries",
+                    "brand": "MDH",
+                    "size": "100g pack",
+                    "tags": ["spice", "powder", "turmeric"]
+                },
+                {
+                    "id": "ghee",
+                    "name": "Pure Ghee",
+                    "price": 280,
+                    "category": "groceries",
+                    "brand": "Patanjali",
+                    "size": "500ml jar",
+                    "tags": ["ghee", "dairy", "cooking"]
+                }
+            ],
+            "snacks": [
+                {
+                    "id": "chips_potato",
+                    "name": "Classic Potato Chips",
+                    "price": 20,
+                    "category": "snacks",
+                    "brand": "Lay's",
+                    "size": "50 g pack",
+                    "tags": ["chips", "salty", "crispy"]
+                },
+                {
+                    "id": "namkeen_bhujia",
+                    "name": "Aloo Bhujia",
+                    "price": 35,
+                    "category": "snacks",
+                    "brand": "Haldiram's",
+                    "size": "200 g",
+                    "tags": ["namkeen", "spicy", "crispy"]
+                },
+                {
+                    "id": "samosa",
+                    "name": "Vegetable Samosa",
+                    "price": 15,
+                    "category": "snacks",
+                    "brand": "Local Vendor",
+                    "size": "1 piece",
+                    "tags": ["snack", "fried", "street-food"]
+                },
+                {
+                    "id": "nuts_cashew",
+                    "name": "Roasted Cashews",
+                    "price": 450,
+                    "category": "snacks",
+                    "brand": "Nutraj",
+                    "size": "500 g",
+                    "tags": ["nuts", "healthy", "protein"]
+                }
+            ],
+            "prepared_food": [
+                {
+                    "id": "paneer_butter_masala",
+                    "name": "Paneer Butter Masala",
+                    "price": 220,
+                    "category": "prepared_food",
+                    "brand": "Restaurant Style",
+                    "size": "1 portion",
+                    "tags": ["curry", "vegetarian", "north-indian"]
+                },
+                {
+                    "id": "chicken_biryani",
+                    "name": "Chicken Biryani",
+                    "price": 250,
+                    "category": "prepared_food",
+                    "brand": "Hyderabadi Special",
+                    "size": "1 plate",
+                    "tags": ["biryani", "rice", "spicy"]
+                },
+                {
+                    "id": "masala_dosa",
+                    "name": "Masala Dosa",
+                    "price": 120,
+                    "category": "prepared_food",
+                    "brand": "South Indian Tiffin",
+                    "size": "1 dosa",
+                    "tags": ["dosa", "south-indian", "vegetarian"]
+                },
+                {
+                    "id": "soup_tomato",
+                    "name": "Tomato Soup",
+                    "price": 80,
+                    "category": "prepared_food",
+                    "brand": "Knorr",
+                    "size": "250 ml",
+                    "tags": ["soup", "comfort", "vegetarian"]
+                }
+            ],
+            "beverages": [
+                {
+                    "id": "soda_cola",
+                    "name": "Cola Soda",
+                    "price": 40,
+                    "category": "beverages",
+                    "brand": "Coca-Cola",
+                    "size": "500 ml bottle",
+                    "tags": ["soda", "cola", "carbonated"]
+                },
+                {
+                    "id": "lassi_sweet",
+                    "name": "Sweet Lassi",
+                    "price": 60,
+                    "category": "beverages",
+                    "brand": "Local Dairy",
+                    "size": "300 ml",
+                    "tags": ["lassi", "yogurt", "refreshing"]
+                },
+                {
+                    "id": "chai_masala",
+                    "name": "Masala Chai",
+                    "price": 20,
+                    "category": "beverages",
+                    "brand": "Street Vendor",
+                    "size": "1 cup",
+                    "tags": ["tea", "spiced", "hot"]
+                },
+                {
+                    "id": "water_bottled",
+                    "name": "Bottled Water",
+                    "price": 20,
+                    "category": "beverages",
+                    "brand": "Bisleri",
+                    "size": "1 liter",
+                    "tags": ["water", "hydration", "basic"]
+                }
+            ]
+        }
+    },
+    "recipes": {
+        "paneer_butter_meal": {
+            "name": "Paneer Butter Masala with Rice",
+            "ingredients": [
+                "paneer",
+                "rice_basmati",
+                "butter",
+                "tomatoes",
+                "onions",
+                "ginger_garlic",
+                "spice_turmeric"
+            ],
+            "description": "Rich paneer curry with basmati rice - includes paneer, tomatoes, onions, spices, and butter"
+        },
+        "dal_chawal": {
+            "name": "Dal Chawal",
+            "ingredients": ["dal_tur", "rice_basmati", "pickle_mango"],
+            "description": "Comfort food combo of dal, rice, and pickle"
+        },
+        "masala_dosa": {
+            "name": "Masala Dosa",
+            "ingredients": ["rice_basmati", "dal_tur", "potato", "oil_cooking"],
+            "description": "Traditional South Indian dosa with spiced potato filling - rice and lentils for batter, potatoes for filling, and oil for cooking"
+        },
+        "masala_dosa_meal": {
+            "name": "Masala Dosa with Chutney",
+            "ingredients": [
+                "rice_basmati",
+                "dal_tur",
+                "potato",
+                "oil_cooking",
+                "onions"
+            ],
+            "description": "Complete South Indian dosa meal with chutney - includes rice, dal, potatoes, oil, and onions"
+        },
+        "chai_snack_combo": {
+            "name": "Masala Chai with Samosa",
+            "ingredients": ["chai_masala", "samosa"],
+            "description": "Popular Indian evening snack combo"
+        },
+        "lassi_with_bhujia": {
+            "name": "Sweet Lassi with Aloo Bhujia",
+            "ingredients": ["lassi_sweet", "namkeen_bhujia"],
+            "description": "Refreshing lassi paired with spicy bhujia"
+        },
+        "aloo_sabzi": {
+            "name": "Simple Aloo Sabzi",
+            "ingredients": [
+                "potato",
+                "onions",
+                "spice_turmeric",
+                "oil_cooking"
+            ],
+            "description": "Basic potato curry with onions, turmeric, and oil"
+        },
+        "ghee_rice": {
+            "name": "Ghee Rice",
+            "ingredients": ["rice_basmati", "ghee"],
+            "description": "Fragrant basmati rice cooked in pure ghee"
+        }
+    }
+}
