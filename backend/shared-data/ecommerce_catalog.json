@@ -1,0 +1,153 @@
+{
+    "store_name": "AuroraMart E-Commerce",
+    "products": [
+        {
+            "id": "mug-001",
+            "name": "Ceramic Coffee Mug",
+            "description": "Premium ceramic coffee mug with ergonomic handle",
+            "price": 299,
+            "currency": "INR",
+            "category": "drinkware",
+            "attributes": {
+                "material": "ceramic",
+                "color": "white",
+                "capacity": "300ml",
+                "dishwasher_safe": true
+            },
+            "stock": 25
+        },
+        {
+            "id": "mug-002",
+            "name": "Travel Mug",
+            "description": "Insulated stainless steel travel mug with leak-proof lid",
+            "price": 599,
+            "currency": "INR",
+            "category": "drinkware",
+            "attributes": {
+                "material": "stainless_steel",
+                "color": "black",
+                "capacity": "500ml",
+                "insulated": true
+            },
+            "stock": 15
+        },
+        {
+            "id": "shirt-001",
+            "name": "Cotton T-Shirt",
+            "description": "100% cotton casual t-shirt, comfortable fit",
+            "price": 799,
+            "currency": "INR",
+            "category": "clothing",
+            "attributes": {
+                "material": "cotton",
+                "color": "blue",
+                "size": "M",
+                "sleeve": "short"
+            },
+            "stock": 30
+        },
+        {
+            "id": "shirt-002",
+            "name": "Polo Shirt",
+            "description": "Classic polo shirt with collar, premium cotton blend",
+            "price": 1299,
+            "currency": "INR",
+            "category": "clothing",
+            "attributes": {
+                "material": "cotton_blend",
+                "color": "white",
+                "size": "L",
+                "sleeve": "short"
+            },
+            "stock": 20
+        },
+        {
+            "id": "hoodie-001",
+            "name": "Black Hoodie",
+            "description": "Comfortable hoodie with front pocket and drawstring hood",
+            "price": 1899,
+            "currency": "INR",
+            "category": "clothing",
+            "attributes": {
+                "material": "cotton_polyester",
+                "color": "black",
+                "size": "M",
+                "hood": true
+            },
+            "stock": 18
+        },
+        {
+            "id": "hoodie-002",
+            "name": "Gray Hoodie",
+            "description": "Premium gray hoodie with soft fleece lining",
+            "price": 2199,
+            "currency": "INR",
+            "category": "clothing",
+            "attributes": {
+                "material": "cotton_polyester",
+                "color": "gray",
+                "size": "L",
+                "hood": true
+            },
+            "stock": 12
+        },
+        {
+            "id": "notebook-001",
+            "name": "Spiral Notebook",
+            "description": "A5 spiral notebook with lined pages, 200 sheets",
+            "price": 199,
+            "currency": "INR",
+            "category": "stationery",
+            "attributes": {
+                "size": "A5",
+                "pages": 200,
+                "binding": "spiral",
+                "ruled": true
+            },
+            "stock": 50
+        },
+        {
+            "id": "pen-001",
+            "name": "Blue Ballpoint Pen",
+            "description": "Smooth writing ballpoint pen with blue ink",
+            "price": 25,
+            "currency": "INR",
+            "category": "stationery",
+            "attributes": {
+                "ink_color": "blue",
+                "type": "ballpoint",
+                "refillable": false
+            },
+            "stock": 100
+        },
+        {
+            "id": "backpack-001",
+            "name": "Laptop Backpack",
+            "description": "Water-resistant laptop backpack with multiple compartments",
+            "price": 2499,
+            "currency": "INR",
+            "category": "bags",
+            "attributes": {
+                "material": "nylon",
+                "color": "black",
+                "laptop_size": "15_inch",
+                "water_resistant": true
+            },
+            "stock": 8
+        },
+        {
+            "id": "phone-case-001",
+            "name": "Phone Case",
+            "description": "Protective silicone phone case with shock absorption",
+            "price": 399,
+            "currency": "INR",
+            "category": "accessories",
+            "attributes": {
+                "material": "silicone",
+                "color": "transparent",
+                "protection": "shock_absorbing"
+            },
+            "stock": 40
+        }
+    ]
+}
