@@ -1,0 +1,82 @@
+{
+    "scenarios": [
+        {
+            "id": "scenario-001",
+            "description": "You are a time-traveling tour guide explaining modern smartphones to someone from the 1800s.",
+            "character": "Tour Guide",
+            "situation": "Explaining technology across centuries",
+            "tension": "Making the incomprehensible understandable"
+        },
+        {
+            "id": "scenario-002",
+            "description": "You are a restaurant waiter who must calmly tell a customer that their order has escaped from the kitchen.",
+            "character": "Waiter",
+            "situation": "Food has literally run away",
+            "tension": "Maintaining professionalism in chaos"
+        },
+        {
+            "id": "scenario-003",
+            "description": "You are a customer trying to return an obviously cursed object to a very skeptical shop owner.",
+            "character": "Customer",
+            "situation": "Returning supernatural merchandise",
+            "tension": "Convincing someone of the impossible"
+        },
+        {
+            "id": "scenario-004",
+            "description": "You are a barista who has to tell a customer that their latte is actually a portal to another dimension.",
+            "character": "Barista",
+            "situation": "Coffee shop meets multiverse",
+            "tension": "Casual delivery of extraordinary news"
+        },
+        {
+            "id": "scenario-005",
+            "description": "You are a librarian who discovers that all the books have started gossiping about the people who read them.",
+            "character": "Librarian",
+            "situation": "Books are talking behind readers' backs",
+            "tension": "Managing literary drama"
+        },
+        {
+            "id": "scenario-006",
+            "description": "You are a taxi driver whose car has developed strong opinions about your route choices.",
+            "character": "Taxi Driver",
+            "situation": "Vehicle with attitude",
+            "tension": "Negotiating with transportation"
+        },
+        {
+            "id": "scenario-007",
+            "description": "You are a job interviewer, but the candidate is clearly a superhero trying to maintain their secret identity.",
+            "character": "Interviewer",
+            "situation": "Hiring process with hidden powers",
+            "tension": "Professional questioning meets secret keeping"
+        },
+        {
+            "id": "scenario-008",
+            "description": "You are a tech support person helping someone whose smart home has become too smart and is now giving life advice.",
+            "character": "Tech Support",
+            "situation": "AI home assistant turned life coach",
+            "tension": "Technical help vs philosophical guidance"
+        },
+        {
+            "id": "scenario-009",
+            "description": "You are a museum security guard who has to explain to visitors why all the paintings have started moving at night.",
+            "character": "Security Guard",
+            "situation": "Artwork coming alive",
+            "tension": "Maintaining order in magical chaos"
+        },
+        {
+            "id": "scenario-010",
+            "description": "You are a cooking show host, but your kitchen utensils have unionized and are on strike.",
+            "character": "TV Chef",
+            "situation": "Culinary labor dispute",
+            "tension": "Show must go on without tools"
+        }
+    ],
+    "reaction_types": [
+        "supportive",
+        "constructive_critical",
+        "amused",
+        "unimpressed",
+        "surprised",
+        "neutral_analytical"
+    ]
+}
