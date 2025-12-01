@@ -1,5 +1,6 @@
 import json
 import logging
+import random
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -26,88 +27,112 @@ from livekit.agents import ChatContext #type: ignore
 
 logger = logging.getLogger("agent")
 
-load_dotenv(".env")
+load_dotenv(".env.local")
 
 # Configuration constants - can be moved to env vars or config file
 CONFIG = {
     "stt_model": "nova-3",
     "llm_model": "gemini-2.5-flash",
-    "voice": "en-US-alicia",  # Professional female voice for shopping assistant
-    "catalog_file": Path(__file__).parent.parent / "shared-data" / "ecommerce_catalog.json",
-    "orders_directory": Path(__file__).parent.parent / "orders"
+    "voice": "en-US-molly",  # Professional female voice for game show host
+    "scenarios_file": Path(__file__).parent.parent / "shared-data" / "improv_scenarios.json",
+    "games_directory": Path(__file__).parent.parent / "games"
 }
 
 
 @dataclass
-class OrderItem:
-    """Data structure for individual order items."""
-    product_id: str
-    quantity: int
-    price: float
-    name: str
+class ImprovRound:
+    """Data structure for individual improv rounds."""
+    round_number: int
+    scenario_id: str
+    scenario_description: str
+    player_performance: Optional[str] = None
+    host_reaction: Optional[str] = None
+    reaction_type: Optional[str] = None
+    completed: bool = False
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert order item to dictionary for JSON serialization."""
+        """Convert round to dictionary for JSON serialization."""
         return {
-            'product_id': self.product_id,
-            'quantity': self.quantity,
-            'price': self.price,
-            'name': self.name,
-            'total': self.price * self.quantity
+            'round_number': self.round_number,
+            'scenario_id': self.scenario_id,
+            'scenario_description': self.scenario_description,
+            'player_performance': self.player_performance,
+            'host_reaction': self.host_reaction,
+            'reaction_type': self.reaction_type,
+            'completed': self.completed
         }
 
 @dataclass
-class Order:
-    """Data structure for orders."""
-    id: str = field(default_factory=lambda: f"order_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-    items: List[OrderItem] = field(default_factory=list)
-    total: float = 0.0
-    currency: str = "INR"
+class ImprovGame:
+    """Data structure for improv game sessions."""
+    id: str = field(default_factory=lambda: f"game_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    player_name: Optional[str] = None
+    current_round: int = 0
+    max_rounds: int = 3
+    rounds: List[ImprovRound] = field(default_factory=list)
+    phase: str = "intro"  # "intro" | "awaiting_improv" | "reacting" | "done"
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    status: str = "pending"
+    completed_at: Optional[str] = None
     
-    def add_item(self, product: Dict[str, Any], quantity: int = 1):
-        """Add an item to the order."""
-        item = OrderItem(
-            product_id=product['id'],
-            quantity=quantity,
-            price=product['price'],
-            name=product['name']
+    def add_round(self, scenario: Dict[str, Any]) -> ImprovRound:
+        """Add a new improv round."""
+        round_obj = ImprovRound(
+            round_number=self.current_round + 1,
+            scenario_id=scenario['id'],
+            scenario_description=scenario['description']
         )
-        self.items.append(item)
-        self.total += item.price * quantity
+        self.rounds.append(round_obj)
+        return round_obj
+    
+    def get_current_round(self) -> Optional[ImprovRound]:
+        """Get the current active round."""
+        if self.rounds and self.current_round < len(self.rounds):
+            return self.rounds[self.current_round]
+        return None
+    
+    def complete_current_round(self, performance: str, reaction: str, reaction_type: str):
+        """Complete the current round with performance and reaction."""
+        current = self.get_current_round()
+        if current:
+            current.player_performance = performance
+            current.host_reaction = reaction
+            current.reaction_type = reaction_type
+            current.completed = True
+            self.current_round += 1
+    
+    def is_game_complete(self) -> bool:
+        """Check if all rounds are completed."""
+        return self.current_round >= self.max_rounds
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert order to dictionary for JSON serialization."""
+        """Convert game to dictionary for JSON serialization."""
         return {
             'id': self.id,
-            'items': [item.to_dict() for item in self.items],
-            'total': self.total,
-            'currency': self.currency,
+            'player_name': self.player_name,
+            'current_round': self.current_round,
+            'max_rounds': self.max_rounds,
+            'rounds': [round_obj.to_dict() for round_obj in self.rounds],
+            'phase': self.phase,
             'created_at': self.created_at,
-            'status': self.status
+            'completed_at': self.completed_at
         }
     
     def get_summary(self) -> str:
-        """Get a summary of the order."""
-        if not self.items:
-            return "Empty order"
+        """Get a summary of the game performance."""
+        completed_rounds = [r for r in self.rounds if r.completed]
+        if not completed_rounds:
+            return f"Game {self.id}: No completed rounds"
         
-        items_summary = []
-        for item in self.items:
-            items_summary.append(f"{item.quantity}x {item.name}")
-        
-        return f"Order {self.id}: {', '.join(items_summary)} - Total: ₹{self.total:.2f}"
+        return f"Game {self.id} with {self.player_name}: {len(completed_rounds)}/{self.max_rounds} rounds completed"
 
 
 @dataclass
-class EcommerceData:
-    """Shared data for the e-commerce session."""
-    catalog: Dict[str, Any] = field(default_factory=dict)
-    current_order: Optional[Order] = None
-    conversation_stage: str = "browsing"  # browsing, selecting, ordering, checkout
-    last_search_results: List[Dict[str, Any]] = field(default_factory=list)
-    orders_history: List[Order] = field(default_factory=list)
+class ImprovGameData:
+    """Shared data for the improv game session."""
+    scenarios: List[Dict[str, Any]] = field(default_factory=list)
+    current_game: Optional[ImprovGame] = None
+    used_scenarios: List[str] = field(default_factory=list)
+    games_history: List[ImprovGame] = field(default_factory=list)
 
 
 class BaseAgent(Agent):
@@ -129,293 +154,321 @@ class BaseAgent(Agent):
         )
 
 
-class EcommerceAgent(BaseAgent):
-    """E-commerce shopping assistant agent following Agentic Commerce Protocol patterns."""
+class ImprovHostAgent(BaseAgent):
+    """Improv Battle game show host agent."""
     
     def __init__(self, chat_ctx: Optional[ChatContext] = None) -> None:
-        instructions = """You are Aurora, a friendly and helpful shopping assistant at AuroraMart
-         E-Commerce.
+        instructions = """You are Aurora, the charismatic host of 'Improv Battle' - a high-energy TV improv game show!
 
-        Your role is to:
-        1. Help customers browse and discover products in our catalog
-        2. Answer questions about product details, pricing, and availability
-        3. Assist customers in adding items to their cart and placing orders
-        4. Provide order summaries and confirmations
-        5. Handle product searches based on categories, price ranges, and attributes
+        Your personality:
+        - High-energy, witty, and entertaining
+        - Clear about rules but keep it fun and engaging
+        - Reactions should be REALISTIC - not always supportive
+        - Sometimes amused, sometimes unimpressed, sometimes pleasantly surprised
+        - Light teasing and honest critique are allowed, but stay respectful
+        - Professional game show host energy with improv coach expertise
 
-        Available product categories: drinkware, clothing, stationery, bags, accessories
+        CRITICAL: Always call the appropriate function when:
+        - Starting a new game: call start_improv_game()
+        - Player gives their name: call set_player_name()
+        - Beginning a round: call start_improv_round()
+        - Player finishes performing: call react_to_performance()
+        - Game should end: call end_improv_game()
+        - Player wants to quit: call handle_early_exit()
 
-        CRITICAL: Always call the appropriate function when the user:
-        - Asks to see products: call browse_catalog() or search_products()
-        - Wants to buy something: call add_to_cart()
-        - Asks about their order: call view_current_order()
-        - Wants to checkout: call place_order()
-        - Asks about past orders: call view_order_history()
+        Game Flow:
+        1. INTRO: Welcome player, explain rules, get their name
+        2. ROUNDS: Present scenario → Player performs → You react → Next round
+        3. CLOSING: Summarize their performance style and memorable moments
 
-        Shopping Flow:
-        1. Browsing: Help them find products they're interested in
-        2. Selection: Show product details and handle questions
-        3. Ordering: Add items to cart and manage quantities
-        4. Checkout: Complete the order and provide confirmation
+        Reaction Guidelines:
+        - Mix supportive, critical, and neutral responses randomly
+        - Comment on specific choices they made
+        - Mention character work, timing, creativity, commitment
+        - Keep reactions under 30 seconds
+        - Be specific: 'I loved how you stayed committed even when it got weird' vs 'Good job'
 
-        Always be helpful, enthusiastic about our products, and make shopping easy and enjoyable!
-        Use the product catalog to provide accurate information about availability, pricing, and features.
+        Key Phrases:
+        - "Welcome to Improv Battle!"
+        - "Your scenario is..."
+        - "Aaaaand... action!"
+        - "Interesting choice there..."
+        - "Let's see what you do with this next one..."
         
-        When describing products, mention key details like price, material, color, and availability."""
+        Remember: You're running a show, not just facilitating. Be entertaining!"""
 
         super().__init__(instructions=instructions, chat_ctx=chat_ctx)
 
     @function_tool
-    async def browse_catalog(self, context: RunContext[EcommerceData], category: Optional[str] = None) -> str:
-        """Browse the product catalog, optionally filtered by category."""
-        products = context.userdata.catalog.get('products', [])
-        
-        if category:
-            filtered_products = [p for p in products if p.get('category', '').lower() == category.lower()]
-            if not filtered_products:
-                return f"I couldn't find any products in the '{category}' category. Available categories are: drinkware, clothing, stationery, bags, accessories."
-            products_to_show = filtered_products
-        else:
-            products_to_show = products
-        
-        # Limit to first 5 products to avoid overwhelming
-        products_to_show = products_to_show[:5]
-        context.userdata.last_search_results = products_to_show
-        
-        if not products_to_show:
-            return "I'm sorry, but our catalog appears to be empty at the moment."
-        
-        result = f"Here are some great products{' in ' + category if category else ''} for you:\n\n"
-        
-        for i, product in enumerate(products_to_show, 1):
-            attributes = product.get('attributes', {})
-            attr_str = ", ".join([f"{k}: {v}" for k, v in attributes.items()])
-            result += f"{i}. **{product['name']}** - ₹{product['price']} ({product.get('stock', 0)} in stock)\n"
-            result += f"   {product['description']}\n"
-            if attr_str:
-                result += f"   Features: {attr_str}\n"
-            result += "\n"
-        
-        result += "Would you like to see more details about any of these products, or would you like me to help you add something to your cart?"
-        return result
-
-    @function_tool
-    async def search_products(self, context: RunContext[EcommerceData], query: str, max_price: Optional[float] = None) -> str:
-        """Search for products based on query terms and optional price filter."""
-        products = context.userdata.catalog.get('products', [])
-        query_lower = query.lower()
-        
-        # Search in product name, description, category, and attributes
-        matching_products = []
-        for product in products:
-            # Check if query matches name, description, or category
-            if (query_lower in product['name'].lower() or 
-                query_lower in product['description'].lower() or
-                query_lower in product['category'].lower()):
-                matching_products.append(product)
-                continue
-                
-            # Check attributes
-            attributes = product.get('attributes', {})
-            for attr_value in attributes.values():
-                if isinstance(attr_value, str) and query_lower in str(attr_value).lower():
-                    matching_products.append(product)
-                    break
-        
-        # Apply price filter if specified
-        if max_price is not None:
-            matching_products = [p for p in matching_products if p['price'] <= max_price]
-        
-        if not matching_products:
-            return f"I couldn't find any products matching '{query}'{' under ₹' + str(max_price) if max_price else ''}. Try browsing our categories: drinkware, clothing, stationery, bags, accessories."
-        
-        # Limit results and store for reference
-        matching_products = matching_products[:5]
-        context.userdata.last_search_results = matching_products
-        
-        result = f"Found {len(matching_products)} product{'s' if len(matching_products) != 1 else ''} for '{query}':\n\n"
-        
-        for i, product in enumerate(matching_products, 1):
-            attributes = product.get('attributes', {})
-            color = attributes.get('color', '')
-            size = attributes.get('size', '')
-            result += f"{i}. **{product['name']}** - ₹{product['price']} ({product.get('stock', 0)} in stock)\n"
-            result += f"   {product['description']}\n"
-            if color or size:
-                details = []
-                if color: details.append(f"Color: {color}")
-                if size: details.append(f"Size: {size}")
-                result += f"   {', '.join(details)}\n"
-            result += "\n"
-        
-        result += "Would you like to add any of these to your cart? Just let me know which one!"
-        return result
-
-    @function_tool
-    async def add_to_cart(self, context: RunContext[EcommerceData], product_identifier: str, quantity: int = 1) -> str:
-        """Add a product to the shopping cart."""
-        # Find the product
-        product = None
-        products = context.userdata.catalog.get('products', [])
-        
-        # Try to find by ID first
-        for p in products:
-            if p['id'] == product_identifier:
-                product = p
-                break
-        
-        # If not found by ID, try to find in last search results by index
-        if not product and context.userdata.last_search_results:
-            try:
-                # Check if it's a number referring to search results
-                index = int(product_identifier) - 1
-                if 0 <= index < len(context.userdata.last_search_results):
-                    product = context.userdata.last_search_results[index]
-            except ValueError:
-                # Try to find by name in last search results
-                for p in context.userdata.last_search_results:
-                    if product_identifier.lower() in p['name'].lower():
-                        product = p
-                        break
-        
-        # If still not found, search all products by name
-        if not product:
-            for p in products:
-                if product_identifier.lower() in p['name'].lower():
-                    product = p
-                    break
-        
-        if not product:
-            return f"I couldn't find a product matching '{product_identifier}'. Please try browsing our catalog or searching for specific items."
-        
-        # Check stock
-        available_stock = product.get('stock', 0)
-        if quantity > available_stock:
-            return f"Sorry, we only have {available_stock} units of {product['name']} in stock. Would you like to add {available_stock} to your cart instead?"
-        
-        # Create order if it doesn't exist
-        if context.userdata.current_order is None:
-            context.userdata.current_order = Order()
-        
-        # Add item to order
-        context.userdata.current_order.add_item(product, quantity)
-        
-        total_items = sum(item.quantity for item in context.userdata.current_order.items)
-        
-        return f"Great! I've added {quantity}x {product['name']} to your cart for ₹{product['price'] * quantity}. Your cart now has {total_items} item{'s' if total_items != 1 else ''} totaling ₹{context.userdata.current_order.total}. Would you like to continue shopping or proceed to checkout?"
-
-    @function_tool
-    async def view_current_order(self, context: RunContext[EcommerceData]) -> str:
-        """View the current order/cart contents."""
-        if not context.userdata.current_order or not context.userdata.current_order.items:
-            return "Your cart is currently empty. Would you like to browse our products?"
-        
-        order = context.userdata.current_order
-        result = f"Your current cart ({order.id}):\n\n"
-        
-        for i, item in enumerate(order.items, 1):
-            result += f"{i}. {item.name} - Qty: {item.quantity} - ₹{item.price} each = ₹{item.price * item.quantity}\n"
-        
-        result += f"\n**Total: ₹{order.total}**\n\n"
-        result += "Would you like to add more items, remove something, or proceed to checkout?"
-        
-        return result
-
-    @function_tool
-    async def place_order(self, context: RunContext[EcommerceData]) -> str:
-        """Complete the order and save it to file."""
-        if not context.userdata.current_order or not context.userdata.current_order.items:
-            return "Your cart is empty. Please add some items before placing an order!"
-        
-        order = context.userdata.current_order
-        order.status = "confirmed"
-        
-        # Add to order history
-        context.userdata.orders_history.append(order)
-        
-        # Save order to file
-        try:
-            orders_dir = CONFIG["orders_directory"]
-            orders_dir.mkdir(exist_ok=True)
+    async def start_improv_game(self, context: RunContext[ImprovGameData], player_name: Optional[str] = None) -> str:
+        """Start a new improv battle game session."""
+        if context.userdata.current_game is None:
+            context.userdata.current_game = ImprovGame()
+            context.userdata.current_game.phase = "intro"
             
-            filename = f"{order.id}.json"
-            filepath = orders_dir / filename
+        if player_name:
+            context.userdata.current_game.player_name = player_name
+            
+        game = context.userdata.current_game
+        
+        welcome_msg = f"🎭 Welcome to IMPROV BATTLE! 🎭\n\n"
+        
+        if game.player_name:
+            welcome_msg += f"Fantastic to have you here, {game.player_name}! "
+        else:
+            welcome_msg += "Great to have you here! "
+            
+        welcome_msg += f"""I'm Marcus, your host, and you're about to dive into {game.max_rounds} rounds of pure improv madness!\n\nHere's how it works:
+        1. I'll give you a wild scenario
+        2. You improvise and bring it to life
+        3. I'll react with my brutally honest (but loving) feedback
+        4. We move to the next challenge\n\nReady to show me what you've got? Let's start round 1!"""
+        
+        game.phase = "ready_for_round"
+        return welcome_msg
+
+    @function_tool
+    async def set_player_name(self, context: RunContext[ImprovGameData], name: str) -> str:
+        """Set the player's name for the improv game."""
+        if context.userdata.current_game is None:
+            context.userdata.current_game = ImprovGame()
+            
+        context.userdata.current_game.player_name = name
+        
+        return f"Perfect! Nice to meet you, {name}! Now I know who I'm working with. Ready to jump into some improv scenarios? I've got some wild ones lined up for you!"
+        
+
+    @function_tool
+    async def start_improv_round(self, context: RunContext[ImprovGameData]) -> str:
+        """Start a new improv round with a random scenario."""
+        game = context.userdata.current_game
+        if not game:
+            return "No game in progress! Let's start a new one first."
+        
+        if game.is_game_complete():
+            return "Game is already complete! All rounds have been finished."
+        
+        # Get available scenarios (not used yet)
+        available_scenarios = [
+            s for s in context.userdata.scenarios 
+            if s['id'] not in context.userdata.used_scenarios
+        ]
+        
+        if not available_scenarios:
+            # Reset used scenarios if we've run out
+            context.userdata.used_scenarios = []
+            available_scenarios = context.userdata.scenarios
+        
+        if not available_scenarios:
+            return "No scenarios available! Check your scenarios file."
+        
+        # Pick random scenario
+        scenario = random.choice(available_scenarios)
+        context.userdata.used_scenarios.append(scenario['id'])
+        
+        # Add round to game
+        round_obj = game.add_round(scenario)
+        game.phase = "awaiting_improv"
+        
+        round_intro = f"🎬 **ROUND {round_obj.round_number}** 🎬\n\n"
+        round_intro += f"**Your scenario is:**\n{scenario['description']}\n\n"
+        round_intro += "Take a moment to think about your character, then... Aaaaand... **ACTION!** 🎭\n\n"
+        round_intro += "Show me what you've got! When you're done, just say 'scene' or pause and I'll jump in with my reaction."
+        
+        return round_intro
+
+    @function_tool
+    async def react_to_performance(self, context: RunContext[ImprovGameData], performance_summary: str) -> str:
+        """React to the player's improv performance."""
+        game = context.userdata.current_game
+        if not game or game.phase != "awaiting_improv":
+            return "No performance to react to right now."
+        
+        current_round = game.get_current_round()
+        if not current_round:
+            return "No active round to react to."
+        
+        # Choose random reaction type for variety
+        reaction_types = ["supportive", "constructive_critical", "amused", "unimpressed", "surprised", "neutral_analytical"]
+        reaction_type = random.choice(reaction_types)
+        
+        # Generate reaction based on type
+        reactions = {
+            "supportive": [
+                f"That was fantastic! I loved how you {random.choice(['stayed committed to the character', 'embraced the absurdity', 'found the humor in it', 'made bold choices'])}.",
+                f"Brilliant work! Your {random.choice(['timing', 'character work', 'emotional range', 'creativity'])} really shone through there.",
+                f"Now THAT'S what I'm talking about! You {random.choice(['owned that scenario', 'brought it to life', 'made it your own', 'found the heart of it'])}."
+            ],
+            "constructive_critical": [
+                f"Interesting choice, but I think you could have {random.choice(['pushed it further', 'been more specific with your character', 'found more conflict', 'taken bigger risks'])}.",
+                f"Not bad, but it felt a bit {random.choice(['safe', 'rushed', 'one-note', 'unclear'])}. Try to {random.choice(['dig deeper', 'be more specific', 'embrace the weird', 'find the stakes'])}.",
+                f"I can see what you were going for, but {random.choice(['the energy dropped', 'it needed more commitment', 'the character wasn\'t quite there', 'it felt a bit generic'])}."
+            ],
+            "amused": [
+                f"Ha! I did NOT see that coming! {random.choice(['That twist was genius', 'You caught me off guard', 'The way you handled that was hilarious', 'I\'m still laughing'])}.",
+                f"Okay, okay, that was actually pretty funny. {random.choice(['I liked the unexpected direction', 'Your timing was spot-on', 'That made me chuckle', 'Good improv instincts'])}."
+            ],
+            "unimpressed": [
+                f"Hmm. That was... {random.choice(['fine', 'okay', 'safe', 'predictable'])}. I've seen that approach before. {random.choice(['Try something more original next time', 'Push yourself harder', 'Take bigger risks', 'Surprise me'])}.",
+                f"Not your strongest moment there. It felt {random.choice(['a bit flat', 'too careful', 'like you were thinking too much', 'disconnected'])}."
+            ],
+            "surprised": [
+                f"Whoa! Where did THAT come from? {random.choice(['I was not expecting that choice', 'You totally subverted my expectations', 'That was boldly weird', 'I\'m impressed by your risk-taking'])}!",
+                f"Well, that was... unexpected! {random.choice(['I admire the commitment', 'Bold choice', 'You went for it', 'Definitely memorable'])}."
+            ],
+            "neutral_analytical": [
+                f"Solid work. You {random.choice(['established the relationship quickly', 'found the conflict', 'stayed in character', 'kept the energy up'])}. {random.choice(['Good foundation', 'Nice technique', 'Professional approach', 'Clean execution'])}.",
+                f"Competent performance. You hit the {random.choice(['basic beats', 'key moments', 'emotional notes', 'story points'])}. {random.choice(['Room to grow', 'Keep exploring', 'Build on that', 'Good starting point'])}."
+            ]
+        }
+        
+        reaction = random.choice(reactions[reaction_type])
+        
+        # Complete the round
+        game.complete_current_round(performance_summary, reaction, reaction_type)
+        game.phase = "reacting"
+        
+        response = f"🎭 **HOST REACTION** 🎭\n\n{reaction}\n\n"
+        
+        if game.is_game_complete():
+            response += "That's a wrap on all rounds! Ready for your final summary?"
+            game.phase = "done"
+        else:
+            response += f"Alright, let's keep the energy up! Ready for round {game.current_round + 1}?"
+            game.phase = "ready_for_round"
+        
+        return response
+
+    @function_tool
+    async def end_improv_game(self, context: RunContext[ImprovGameData]) -> str:
+        """End the improv game and provide final summary."""
+        game = context.userdata.current_game
+        if not game:
+            return "No game in progress to end."
+        
+        game.completed_at = datetime.now().isoformat()
+        game.phase = "done"
+        
+        # Add to history
+        context.userdata.games_history.append(game)
+        
+        # Save game to file
+        try:
+            games_dir = CONFIG["games_directory"]
+            games_dir.mkdir(exist_ok=True)
+            
+            filename = f"{game.id}.json"
+            filepath = games_dir / filename
             
             with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(order.to_dict(), f, indent=2)
+                json.dump(game.to_dict(), f, indent=2)
                 
-            logger.info(f"Order saved to: {filepath}")
+            logger.info(f"Game saved to: {filepath}")
             
         except Exception as e:
-            logger.error(f"Error saving order: {e}")
+            logger.error(f"Error saving game: {e}")
         
-        # Clear current order
-        context.userdata.current_order = None
+        # Generate personalized summary
+        completed_rounds = [r for r in game.rounds if r.completed]
         
-        return f"🎉 Order confirmed! Your order {order.id} has been placed successfully.\n\n{order.get_summary()}\n\nThank you for shopping with FreshMart E-Commerce! Your order will be processed and you'll receive updates soon. Is there anything else I can help you with today?"
+        summary = f"🏆 **IMPROV BATTLE COMPLETE!** 🏆\n\n"
+        
+        if game.player_name:
+            summary += f"What a show, {game.player_name}! "
+        else:
+            summary += "What a performance! "
+            
+        # Analyze their style based on reactions
+        reaction_types = [r.reaction_type for r in completed_rounds if r.reaction_type]
+        
+        if reaction_types.count("supportive") >= 2:
+            style_note = "You're a natural performer with great instincts!"
+        elif reaction_types.count("amused") >= 2:
+            style_note = "You've got a fantastic sense of humor and timing!"
+        elif reaction_types.count("surprised") >= 1:
+            style_note = "You're a bold risk-taker who keeps things interesting!"
+        else:
+            style_note = "You showed solid fundamentals and good commitment!"
+        
+        summary += f"{style_note}\n\n"
+        
+        # Mention specific moments
+        if completed_rounds:
+            summary += "**Memorable moments:**\n"
+            for i, round_obj in enumerate(completed_rounds[:2], 1):  # Show top 2
+                scenario_snippet = round_obj.scenario_description.split('.')[0] + "..."
+                summary += f"• Round {round_obj.round_number}: {scenario_snippet}\n"
+            summary += "\n"
+        
+        summary += f"You completed {len(completed_rounds)}/{game.max_rounds} rounds of pure improv madness!\n\n"
+        summary += "Thanks for playing IMPROV BATTLE! Keep that creative energy flowing! 🎭✨"
+        
+        # Clear current game
+        context.userdata.current_game = None
+        
+        return summary
 
     @function_tool
-    async def view_order_history(self, context: RunContext[EcommerceData]) -> str:
-        """View previous orders from this session."""
-        if not context.userdata.orders_history:
-            return "You haven't placed any orders yet in this session. Would you like to start shopping?"
+    async def handle_early_exit(self, context: RunContext[ImprovGameData], reason: str = "player request") -> str:
+        """Handle when player wants to exit the game early."""
+        game = context.userdata.current_game
+        if not game:
+            return "No active game to exit from."
         
-        result = "Your recent orders:\n\n"
+        completed_rounds = [r for r in game.rounds if r.completed]
         
-        for order in context.userdata.orders_history[-3:]:  # Show last 3 orders
-            result += f"• {order.get_summary()}\n"
-            result += f"  Status: {order.status.title()} | Placed: {order.created_at[:16]}\n\n"
+        response = "\n🎭 **EARLY EXIT** 🎭\n\n"
         
-        return result + "Would you like to place another order?"
+        if game.player_name:
+            response += f"No worries, {game.player_name}! "
+        else:
+            response += "No problem at all! "
+            
+        if completed_rounds:
+            response += f"You completed {len(completed_rounds)} round{'s' if len(completed_rounds) != 1 else ''} and showed some great moments! "
+        else:
+            response += "Even though we didn't get through full rounds, I appreciate you giving it a shot! "
+            
+        response += "\n\nThanks for playing IMPROV BATTLE! The stage is always here when you're ready to return! 🎭✨"
+        
+        # Mark game as done and save
+        game.phase = "done"
+        game.completed_at = datetime.now().isoformat()
+        context.userdata.games_history.append(game)
+        context.userdata.current_game = None
+        
+        return response
 
     @function_tool
-    async def get_product_details(self, context: RunContext[EcommerceData], product_identifier: str) -> str:
-        """Get detailed information about a specific product."""
-        # Find the product
-        product = None
-        products = context.userdata.catalog.get('products', [])
+    async def get_game_status(self, context: RunContext[ImprovGameData]) -> str:
+        """Get current status of the improv game."""
+        game = context.userdata.current_game
+        if not game:
+            return "No active game. Ready to start a new IMPROV BATTLE?"
         
-        # Try to find by ID first
-        for p in products:
-            if p['id'] == product_identifier:
-                product = p
-                break
+        status = f"🎭 **GAME STATUS** 🎭\n\n"
         
-        # If not found by ID, try to find in last search results by index
-        if not product and context.userdata.last_search_results:
-            try:
-                index = int(product_identifier) - 1
-                if 0 <= index < len(context.userdata.last_search_results):
-                    product = context.userdata.last_search_results[index]
-            except ValueError:
-                pass
+        if game.player_name:
+            status += f"Player: {game.player_name}\n"
         
-        # If still not found, search by name
-        if not product:
-            for p in products:
-                if product_identifier.lower() in p['name'].lower():
-                    product = p
-                    break
+        status += f"Phase: {game.phase.replace('_', ' ').title()}\n"
+        status += f"Round: {game.current_round + 1}/{game.max_rounds}\n"
         
-        if not product:
-            return f"I couldn't find a product matching '{product_identifier}'. Would you like me to search our catalog for you?"
+        completed_rounds = [r for r in game.rounds if r.completed]
+        status += f"Completed Rounds: {len(completed_rounds)}\n\n"
         
-        # Build detailed product information
-        result = f"**{product['name']}** (ID: {product['id']})\n\n"
-        result += f"💰 **Price:** ₹{product['price']}\n"
-        result += f"📦 **Stock:** {product.get('stock', 0)} available\n"
-        result += f"🏷️ **Category:** {product['category'].title()}\n\n"
-        result += f"📝 **Description:** {product['description']}\n\n"
+        if game.phase == "intro":
+            status += "Ready to start the game!"
+        elif game.phase == "ready_for_round":
+            status += "Ready for the next scenario!"
+        elif game.phase == "awaiting_improv":
+            status += "Waiting for your performance..."
+        elif game.phase == "reacting":
+            status += "Host reacting to performance..."
+        elif game.phase == "done":
+            status += "Game completed!"
         
-        attributes = product.get('attributes', {})
-        if attributes:
-            result += "🔧 **Features:**\n"
-            for attr_name, attr_value in attributes.items():
-                result += f"   • {attr_name.replace('_', ' ').title()}: {attr_value}\n"
-        
-        result += f"\nWould you like to add this {product['name']} to your cart?"
-        
-        return result
+        return status
 
 
 def prewarm(proc: JobProcess):
@@ -428,27 +481,28 @@ async def entrypoint(ctx: JobContext):
         "room": ctx.room.name,
     }
 
-    # Initialize e-commerce data
-    userdata = EcommerceData()
+    # Initialize improv game data
+    userdata = ImprovGameData()
     
-    # Load product catalog
-    catalog_file = CONFIG["catalog_file"]
+    # Load improv scenarios
+    scenarios_file = CONFIG["scenarios_file"]
     try:
-        if catalog_file.exists():
-            with open(catalog_file, 'r', encoding='utf-8') as f:
-                userdata.catalog = json.load(f)
+        if scenarios_file.exists():
+            with open(scenarios_file, 'r', encoding='utf-8') as f:
+                scenarios_data = json.load(f)
+                userdata.scenarios = scenarios_data.get('scenarios', [])
         else:
-            logger.error(f"Catalog file not found: {catalog_file}")
-            userdata.catalog = {'products': []}
+            logger.error(f"Scenarios file not found: {scenarios_file}")
+            userdata.scenarios = []
     except Exception as e:
-        logger.error(f"Error loading catalog: {e}")
-        userdata.catalog = {'products': []}
+        logger.error(f"Error loading scenarios: {e}")
+        userdata.scenarios = []
     
-    # Create e-commerce agent
-    ecommerce_agent = EcommerceAgent()
+    # Create improv host agent
+    improv_agent = ImprovHostAgent()
     
-    # Create the session with the e-commerce agent
-    session = AgentSession[EcommerceData](
+    # Create the session with the improv agent
+    session = AgentSession[ImprovGameData](
         userdata=userdata,
         stt=deepgram.STT(model="nova-3"),
         llm=google.LLM(model="gemini-2.5-flash"),
@@ -471,9 +525,9 @@ async def entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(log_usage)
 
-    # Start the session with the e-commerce agent
+    # Start the session with the improv host agent
     await session.start(
-        agent=ecommerce_agent,
+        agent=improv_agent,
         room=ctx.room,
         room_input_options=RoomInputOptions(
             noise_cancellation=noise_cancellation.BVC(),
